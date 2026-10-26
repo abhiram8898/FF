@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Brand palette, based on the slate-teal used in the process flow */
+@theme {
+  --color-brand-50: #f1f7f8;
+  --color-brand-100: #dcebee;
+  --color-brand-200: #bcd8de;
+  --color-brand-300: #8fbcc6;
+  --color-brand-500: #4f8a98;
+  --color-brand-600: #437885;
+  --color-brand-700: #39626d;
+  --color-brand-800: #31515a;
+  --color-brand-900: #1f363d;
+}
+
+body {
+  background: var(--color-slate-50);
+  color: var(--color-slate-900);
+}
+
+/* Visible keyboard focus for links and controls that don't style their own */
+a:focus-visible,
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  /* With a document open in a modal, print only that document */
+  body:has([role="dialog"]) main > :not(:has([role="dialog"])) {
+    display: none !important;
+  }
+  .modal-overlay {
+    position: static !important;
+    overflow: visible !important;
+    background: none !important;
+    padding: 0 !important;
+  }
+  [role="dialog"] {
+    box-shadow: none !important;
+    max-width: none !important;
+  }
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+}
