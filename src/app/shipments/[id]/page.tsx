@@ -6,8 +6,9 @@ import { useState } from "react";
 import { Printer } from "lucide-react";
 import { useLookups, useStore } from "@/lib/store";
 import type { Awb, Job } from "@/lib/types";
-import { fmtDate, money, quoteTotals } from "@/lib/utils";
-import { Button, Card, Empty, Field, Input, KeyValue, PageHeader, Select, Textarea, linkCls } from "@/components/ui";
+import { fmtDate, omit } from "@/lib/utils";
+import { Badge, Button, Card, Empty, Field, Input, PageHeader, Select, Textarea, linkCls } from "@/components/ui";
+import { BookingJobForm, JOB_STATUS_TONE } from "@/components/BookingJobForm";
 
 export default function ShipmentPage() {
   const { id } = useParams<{ id: string }>();
@@ -15,8 +16,8 @@ export default function ShipmentPage() {
   const j = job(id);
   if (!j) {
     return (
-      <Empty action={<Link href="/shipments" className={linkCls}>Back to Shipments</Link>}>
-        This shipment doesn&apos;t exist. It may have been removed when the demo data was reset.
+      <Empty action={<Link href="/shipments" className={linkCls}>Back to Booking/Job</Link>}>
+        This booking doesn&apos;t exist. It may have been removed when the demo data was reset.
       </Empty>
     );
   }
@@ -24,26 +25,37 @@ export default function ShipmentPage() {
 }
 
 function ShipmentView({ job }: { job: Job }) {
-  const { enquiry, customer, quotation, airline, portLabel } = useLookups();
-  const enq = enquiry(job.enquiryId)!;
+  const { actions } = useStore();
+  const { enquiry, quotation } = useLookups();
+  const enq = enquiry(job.enquiryId);
   const q = quotation(job.quotationId);
+  // Everything except identity and the AWB is edited in the form
+  const editable = omit(job, ["id", "ref", "createdAt", "awb"]);
 
   return (
     <>
       <PageHeader
-        back={{ href: "/shipments", label: "Shipments" }}
-        title={job.ref}
+        back={{ href: "/shipments", label: "Booking/Job" }}
+        title={
+          <span className="flex flex-wrap items-center gap-3">
+            <span className="font-mono">{job.ref}</span> <Badge className={JOB_STATUS_TONE[job.status]}>{job.status}</Badge>
+          </span>
+        }
         subtitle={
           <>
             From{" "}
-            <Link href={`/enquiries/${enq.id}`} className={linkCls}>
-              {enq.ref}
-            </Link>{" "}
+            {enq && (
+              <Link href={`/enquiries/${enq.id}`} className={linkCls}>
+                {enq.ref}
+              </Link>
+            )}{" "}
             /{" "}
-            <Link href={`/quotations/${q?.id}`} className={linkCls}>
-              {q?.ref}
-            </Link>{" "}
-            · created {fmtDate(job.createdAt)}
+            {q && (
+              <Link href={`/quotations/${q.id}`} className={linkCls}>
+                {q.ref}
+              </Link>
+            )}{" "}
+            · booked {fmtDate(job.date)}
           </>
         }
         actions={
@@ -54,24 +66,11 @@ function ShipmentView({ job }: { job: Job }) {
           )
         }
       />
-      <Card title="Shipment summary" className="no-print mb-6">
-        <KeyValue
-          items={[
-            ["Customer", customer(enq.customerId)?.name],
-            ["Carrier", airline(q?.airlineId)?.name],
-            ["POL", portLabel(enq.pol)],
-            ["POD", portLabel(enq.pod)],
-            ["Shipment date", fmtDate(enq.shipmentDate)],
-            ["Booking ref", enq.booking?.ref],
-            ["Flight", enq.booking ? `${enq.booking.flightNo} · ${fmtDate(enq.booking.flightDate)}` : ""],
-            ["Invoice", enq.docs?.invoiceNo],
-            ["Packages", `${enq.packages} ${enq.packageType}`],
-            ["Chargeable weight", `${enq.chargeableWeight} kg`],
-            ["Quoted total", q ? money(quoteTotals(q).grand) : ""],
-          ]}
-        />
-      </Card>
-      {job.awb ? <AwbDocument job={job} /> : <AwbForm job={job} />}
+      <div className="no-print mb-3">
+        {/* Creating the AWB below also fills AWB No / flight; re-key so the form picks those up */}
+        <BookingJobForm key={job.awb?.number ?? "no-awb"} initial={editable} jobRef={job.ref} submitLabel="Save changes" requireChanges onSubmit={(data) => actions.updateJob(job.id, data)} />
+      </div>
+      {enq && (job.awb ? <AwbDocument job={job} /> : <AwbForm job={job} />)}
     </>
   );
 }
@@ -86,12 +85,12 @@ function AwbForm({ job }: { job: Job }) {
   const [a, setA] = useState<Awb>(() => ({
     type: "Master",
     // MAWB numbers are the airline's 3-digit prefix + 8-digit serial
-    number: `${al?.prefix ?? "000"}-${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`,
+    number: job.awbNo || `${al?.prefix ?? "000"}-${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`,
     issuedAt: new Date().toISOString().slice(0, 10),
-    shipper: [cust?.name, cust?.address].filter(Boolean).join("\n"),
+    shipper: job.shipperName || [cust?.name, cust?.address].filter(Boolean).join("\n"),
     consignee: "",
-    flightNo: enq.booking?.flightNo ?? "",
-    flightDate: enq.booking?.flightDate ?? "",
+    flightNo: job.flightNo || enq.booking?.flightNo || "",
+    flightDate: job.flightDate || enq.booking?.flightDate || "",
     pieces: enq.packages,
     grossWeight: enq.grossWeight,
     chargeableWeight: enq.chargeableWeight,
@@ -105,7 +104,7 @@ function AwbForm({ job }: { job: Job }) {
   return (
     <Card title="Create Air Waybill (AWB)">
       <form
-        className="grid grid-cols-2 gap-4 sm:grid-cols-4"
+        className="grid grid-cols-2 gap-3 sm:grid-cols-4"
         onSubmit={(e) => {
           e.preventDefault();
           actions.createAwb(job.id, a);
@@ -177,7 +176,7 @@ function AwbDocument({ job }: { job: Job }) {
   const label = "block text-[10px] text-slate-500 uppercase";
 
   return (
-    <div className="mx-auto max-w-4xl bg-white p-6 font-mono text-xs text-slate-900 shadow-sm ring-1 ring-slate-200">
+    <div className="mx-auto max-w-4xl bg-white p-3 font-mono text-xs text-slate-900 shadow-sm ring-1 ring-slate-200">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <span className="text-lg font-bold">{awb.number}</span>
         <span className="font-sans text-sm font-semibold">

@@ -90,7 +90,7 @@ export function RouteInsights({ enquiry }: { enquiry: Pick<Enquiry, "customerId"
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div>
         <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-slate-500 uppercase">
           <Plane size={13} /> Airlines serving this route
@@ -114,7 +114,7 @@ export function RouteInsights({ enquiry }: { enquiry: Pick<Enquiry, "customerId"
           <span>
             {rates.length
               ? `${rates.length} valid rate sheet${rates.length > 1 ? "s" : ""} found for ${enquiry.pol} → ${enquiry.pod}.`
-              : "No rates updated in the masters for this POL & POD. Use Save & Forward to request rates from airlines."}
+              : "No rates updated in the masters for this POL & POD. Use Get Rate from Airline, or add a rate manually."}
           </span>
         </div>
       )}
@@ -159,14 +159,18 @@ export function RateForm({
   lockRoute,
   onSubmit,
   submitLabel = "Save rate",
+  useLabel,
   extra,
 }: {
   initial: Partial<RateInput>;
   /** Restrict the airline dropdown to these ids */
   airlineIds?: string[];
   lockRoute?: boolean;
-  onSubmit: (rate: RateInput) => void;
+  /** `use` is true when the user picked the second button (e.g. "Add & Use Rate") */
+  onSubmit: (rate: RateInput, use: boolean) => void;
   submitLabel?: string;
+  /** Label of an optional second button that also uses the rate */
+  useLabel?: string;
   extra?: React.ReactNode;
 }) {
   const { state } = useStore();
@@ -191,12 +195,17 @@ export function RateForm({
     </option>
   ));
 
+  const invalid = !r.airlineId || !r.pol || !r.pod || r.pol === r.pod || r.ratePerKg <= 0;
+  const sectionTitle = "col-span-2 mt-2 border-t border-slate-100 pt-3 text-xs font-semibold tracking-wide text-slate-500 uppercase sm:col-span-4";
+
   return (
     <form
       className="grid grid-cols-2 gap-3 sm:grid-cols-4"
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit(r);
+        // Both buttons submit (so required fields are checked); the second one carries value="use"
+        const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+        onSubmit(r, submitter?.value === "use");
       }}
     >
       <Field label="Airline" className="col-span-2">
@@ -220,6 +229,8 @@ export function RateForm({
           {portOptions}
         </Select>
       </Field>
+
+      <h3 className={sectionTitle}>1 · Air Freight</h3>
       <Field label="Currency">
         <Select value={r.currency} onChange={(e) => setR({ ...r, currency: e.target.value })}>
           {state.settings.currencies.map((c) => (
@@ -227,11 +238,8 @@ export function RateForm({
           ))}
         </Select>
       </Field>
-      <Field label="Rate / kg">
+      <Field label="Air freight rate / kg *">
         <Input type="number" step="0.01" min="0" value={r.ratePerKg} onChange={num("ratePerKg")} required />
-      </Field>
-      <Field label="AWB fee">
-        <Input type="number" step="0.01" min="0" value={r.awbFee} onChange={num("awbFee")} />
       </Field>
       <Field label="Minimum charge">
         <Input type="number" step="0.01" min="0" value={r.minCharge} onChange={num("minCharge")} />
@@ -242,18 +250,60 @@ export function RateForm({
       <Field label="Valid until">
         <Input type="date" value={r.validUntil} onChange={(e) => setR({ ...r, validUntil: e.target.value })} required />
       </Field>
-      {extra && <div className="col-span-2 flex items-end sm:col-span-2">{extra}</div>}
-      <div className="col-span-2 flex justify-end sm:col-span-4">
-        <Button type="submit" disabled={!r.airlineId || !r.pol || !r.pod || r.pol === r.pod || r.ratePerKg <= 0} title={r.ratePerKg <= 0 ? "Enter the rate per kg" : undefined}>
+
+      <h3 className={sectionTitle}>2 · Airway Bill Fees</h3>
+      <Field label={`Airway bill fees (${r.currency}, per shipment)`} className="col-span-2">
+        <Input type="number" step="0.01" min="0" value={r.awbFee} onChange={num("awbFee")} />
+      </Field>
+      {extra && <div className="col-span-2 flex items-end">{extra}</div>}
+
+      <div className="col-span-2 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3 sm:col-span-4">
+        <Button type="submit" variant={useLabel ? "secondary" : "primary"} disabled={invalid} title={r.ratePerKg <= 0 ? "Enter the air freight rate per kg" : undefined}>
           {submitLabel}
         </Button>
+        {useLabel && (
+          <Button type="submit" value="use" disabled={invalid}>
+            {useLabel}
+          </Button>
+        )}
       </div>
     </form>
   );
 }
 
-/** FRD XIX/XX: "Get Rates · Compare Airline Rate Sheets" */
-export function GetRatesModal({ enq, onClose, onForward }: { enq: Enquiry; onClose: () => void; onForward: () => void }) {
+/** "Add Rate Manually": a rate found elsewhere (open source, phone call) used for one enquiry */
+export function ManualRateModal({ enq, onClose }: { enq: Enquiry; onClose: () => void }) {
+  const router = useRouter();
+  const { actions } = useStore();
+  const [saveToMaster, setSaveToMaster] = useState(false);
+  return (
+    <Modal open onClose={onClose} title={`Add Rate Manually · ${enq.ref}`} wide>
+      <p className="mb-3 text-sm text-slate-600">
+        Enter a rate you already have, for example from an airline&apos;s open rate sheet. It is added to this enquiry like an airline reply and can be used for the quotation.
+      </p>
+      <RateForm
+        initial={{ pol: enq.pol, pod: enq.pod, source: "Manual", enquiryId: enq.id, ...(enq.airlineIds[0] ? { airlineId: enq.airlineIds[0] } : {}) }}
+        lockRoute
+        submitLabel="Add Rate"
+        useLabel="Add & Use Rate"
+        extra={
+          <label className="flex items-center gap-2 pb-2 text-sm">
+            <input type="checkbox" checked={saveToMaster} onChange={(e) => setSaveToMaster(e.target.checked)} className="accent-brand-600" />
+            Also save to Rate Management (masters)
+          </label>
+        }
+        onSubmit={(rate, use) => {
+          const rateId = actions.addManualRate(enq.id, rate, saveToMaster);
+          onClose();
+          if (use) router.push(`/quotations/${actions.createQuotation(enq.id, rateId).id}`);
+        }}
+      />
+    </Modal>
+  );
+}
+
+/** FRD XIX/XX: "Compare Available Rates" from the masters and this enquiry's replies */
+export function GetRatesModal({ enq, onClose, onForward, onManual }: { enq: Enquiry; onClose: () => void; onForward: () => void; onManual: () => void }) {
   const router = useRouter();
   const { state, actions } = useStore();
   const { customer, airline, portLabel } = useLookups();
@@ -277,13 +327,18 @@ export function GetRatesModal({ enq, onClose, onForward }: { enq: Enquiry; onClo
     <Modal
       open
       onClose={onClose}
-      title="Get Rates · Compare Airline Rate Sheets"
+      title="Compare Available Rates"
       wide
       footer={
         <div className="flex w-full flex-wrap items-center justify-between gap-2">
-          <Button variant="secondary" onClick={onClose}>
-            Close
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onClose}>
+              Close
+            </Button>
+            <Button variant="ghost" onClick={onManual} disabled={quotationLocked}>
+              Add Rate Manually
+            </Button>
+          </div>
           {rates.length > 0 && (
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => setCompareOnly((v) => !v)} disabled={!selected.length}>
@@ -301,7 +356,7 @@ export function GetRatesModal({ enq, onClose, onForward }: { enq: Enquiry; onClo
         </div>
       }
     >
-      <div className="mb-4 rounded-lg border border-brand-100 bg-brand-50/60 p-3">
+      <div className="mb-3 rounded-lg border border-brand-100 bg-brand-50/60 p-3">
         <KeyValue
           compact
           cols={4}
@@ -388,23 +443,28 @@ export function GetRatesModal({ enq, onClose, onForward }: { enq: Enquiry; onClo
       ) : (
         <Fog>
           <div className="font-medium">No rates updated in the masters for this POL & POD.</div>
-          <div className="mt-1">Forward the enquiry to airlines to request rates.</div>
-          <Button size="sm" className="mt-2" onClick={onForward}>
-            Save & Forward to airlines
-          </Button>
+          <div className="mt-1">Request a rate from airlines by email, or add a rate you already have.</div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button size="sm" onClick={onForward}>
+              Get Rate from Airline
+            </Button>
+            <Button size="sm" variant="secondary" onClick={onManual}>
+              Add Rate Manually
+            </Button>
+          </div>
         </Fog>
       )}
     </Modal>
   );
 }
 
-function rateRequestMail(enq: Enquiry, customerName: string, polLabel: string, podLabel: string, reminder = false): Omit<MailDraft, "to"> {
+function rateRequestMail(enq: Enquiry, airlineName: string, customerName: string, polLabel: string, podLabel: string, reminder = false): Omit<MailDraft, "to"> {
   return {
     cc: "",
     bcc: "",
     subject: `${reminder ? "Reminder: " : ""}Request for Air Freight Rate – ${polLabel} to ${podLabel} [${enq.ref}]`,
     body: [
-      "Dear Airline / Cargo Sales Team,",
+      `Dear ${airlineName} Cargo Sales Team,`,
       "",
       reminder
         ? "This is a gentle reminder on our rate request below. We would appreciate your rates at the earliest."
@@ -427,10 +487,54 @@ function rateRequestMail(enq: Enquiry, customerName: string, polLabel: string, p
   };
 }
 
-/** FRD VI–VIII: "Save & Forward" → Select Airlines to Request Rates → Rate Request email */
-export function ForwardFlow({ enq, onClose }: { enq: Enquiry; onClose: () => void }) {
+/**
+ * Sends one email per airline, in turn, so each airline gets its own message.
+ * Used for both rate requests and reminders.
+ */
+function PerAirlineMail({
+  enq,
+  airlineIds,
+  reminder,
+  onClose,
+}: {
+  enq: Enquiry;
+  airlineIds: string[];
+  reminder?: boolean;
+  onClose: () => void;
+}) {
   const { state, actions } = useStore();
   const { customer, portLabel } = useLookups();
+  const [index, setIndex] = useState(0);
+  const airline = state.airlines.find((a) => a.id === airlineIds[index])!;
+  const next = () => (index + 1 < airlineIds.length ? setIndex(index + 1) : onClose());
+  const kind = reminder ? "Reminder" : "Rate Request";
+
+  return (
+    <ComposeEmail
+      key={airline.id}
+      title={airlineIds.length > 1 ? `${kind} ${index + 1} of ${airlineIds.length} · ${airline.name}` : `${kind} · ${airline.name}`}
+      initial={{ to: [airline.email], ...rateRequestMail(enq, airline.name, customer(enq.customerId)?.name ?? "", portLabel(enq.pol), portLabel(enq.pod), reminder) }}
+      note={
+        airlineIds.length > 1 && (
+          <p className="text-xs text-slate-500">
+            Each airline gets its own email. After this one: {airlineIds.slice(index + 1).map((id) => state.airlines.find((a) => a.id === id)?.name).join(", ") || "done"}.
+          </p>
+        )
+      }
+      sendLabel={index + 1 < airlineIds.length ? "Send & next airline" : "Send"}
+      onClose={onClose}
+      onSend={(mail) => {
+        if (reminder) actions.sendRateReminder(enq.id, airline.id, mail);
+        else actions.sendRateRequest(enq.id, airline.id, mail);
+        next();
+      }}
+    />
+  );
+}
+
+/** FRD VI–VIII: "Get Rate from Airline" → Select Airlines → one Rate Request email per airline */
+export function ForwardFlow({ enq, onClose }: { enq: Enquiry; onClose: () => void }) {
+  const { state } = useStore();
   const routeAirlines = airlinesForRoute(state.airlines, enq.pol, enq.pod);
   const airlines = routeAirlines.length ? routeAirlines : state.airlines;
   const alreadySent = enq.rateRequests.map((r) => r.airlineId);
@@ -438,31 +542,13 @@ export function ForwardFlow({ enq, onClose }: { enq: Enquiry; onClose: () => voi
   const [step, setStep] = useState<"select" | "compose">("select");
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
-  if (step === "compose") {
-    const emails = selected.map((id) => state.airlines.find((a) => a.id === id)!.email);
-    return (
-      <ComposeEmail
-        title="Rate Request"
-        initial={{ to: emails, ...rateRequestMail(enq, customer(enq.customerId)?.name ?? "", portLabel(enq.pol), portLabel(enq.pod)) }}
-        note={
-          selected.length > 1 && (
-            <p className="text-xs text-slate-500">One rate per mail: a separate email is sent to each of the {selected.length} airlines.</p>
-          )
-        }
-        onClose={onClose}
-        onSend={(mail) => {
-          actions.sendRateRequest(enq.id, selected, mail);
-          onClose();
-        }}
-      />
-    );
-  }
+  if (step === "compose") return <PerAirlineMail enq={enq} airlineIds={selected} onClose={onClose} />;
 
   return (
     <Modal
       open
       onClose={onClose}
-      title="Select Airlines to Request Rates"
+      title="Get Rate from Airline · Select Airlines"
       wide
       footer={
         <div className="flex w-full justify-between">
@@ -477,7 +563,7 @@ export function ForwardFlow({ enq, onClose }: { enq: Enquiry; onClose: () => voi
     >
       <p className="mb-3 text-sm text-slate-600">
         {selected.length
-          ? `${selected.length} airline${selected.length > 1 ? "s" : ""} selected.`
+          ? `${selected.length} airline${selected.length > 1 ? "s" : ""} selected. Each gets an individual email.`
           : "No airline selected. Choose the airline(s) to receive this enquiry."}
       </p>
       <h3 className="mb-2 text-xs font-semibold text-slate-500 uppercase">Airlines {routeAirlines.length ? `serving ${enq.pol} → ${enq.pod}` : ""}</h3>
@@ -502,28 +588,12 @@ export function ForwardFlow({ enq, onClose }: { enq: Enquiry; onClose: () => voi
 
 /** FRD XII–XIII: Send Reminder to one or more airlines, through the same mail box pop-up */
 export function ReminderFlow({ enq, airlineIds, onClose }: { enq: Enquiry; airlineIds: string[]; onClose: () => void }) {
-  const { state, actions } = useStore();
-  const { customer, portLabel } = useLookups();
+  const { state } = useStore();
   const [selected, setSelected] = useState(airlineIds);
   const [step, setStep] = useState<"select" | "compose">(airlineIds.length === 1 ? "compose" : "select");
   const pending = enq.rateRequests.filter((r) => !r.repliedAt);
 
-  if (step === "compose") {
-    return (
-      <ComposeEmail
-        title="Send Reminder"
-        initial={{
-          to: selected.map((id) => state.airlines.find((a) => a.id === id)!.email),
-          ...rateRequestMail(enq, customer(enq.customerId)?.name ?? "", portLabel(enq.pol), portLabel(enq.pod), true),
-        }}
-        onClose={onClose}
-        onSend={(mail) => {
-          actions.sendRateReminder(enq.id, selected, mail);
-          onClose();
-        }}
-      />
-    );
-  }
+  if (step === "compose") return <PerAirlineMail enq={enq} airlineIds={selected} reminder onClose={onClose} />;
 
   return (
     <Modal

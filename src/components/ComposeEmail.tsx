@@ -3,14 +3,9 @@
 import { useState } from "react";
 import { Paperclip, Send } from "lucide-react";
 import { useStore } from "@/lib/store";
+import { isEmail, splitEmails } from "@/lib/utils";
 import type { MailDraft } from "@/lib/types";
 import { Button, Field, Input, Modal, Textarea } from "./ui";
-
-const splitEmails = (v: string) =>
-  v
-    .split(/[;,]/)
-    .map((x) => x.trim())
-    .filter(Boolean);
 
 /**
  * Compose Email box (FRD p.6 / p.13). Sending records the mail in Email Logs;
@@ -39,7 +34,7 @@ export function ComposeEmail({
   const [bcc, setBcc] = useState(initial.bcc ?? "");
   const [subject, setSubject] = useState(initial.subject);
   const [body, setBody] = useState(initial.body);
-  const invalid = splitEmails(to).filter((e) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+  const invalid = splitEmails(to).filter((e) => !isEmail(e));
   const valid = splitEmails(to).length > 0 && !invalid.length && subject.trim() && body.trim();
 
   return (

@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import { Mail, UserPlus } from "lucide-react";
 import { type EnquiryInput, useStore } from "@/lib/store";
 import { INCOTERMS, PRODUCT_TYPES, type Enquiry, type InboxEmail, type Port } from "@/lib/types";
-import { airlinesForRoute, fmtPort, makeRef, ratesForRoute, today, volumeCbm, volumetricWeight } from "@/lib/utils";
-import { Button, Card, Field, Fog, Input, PageHeader, Select, Textarea, buttonCls } from "./ui";
+import { airlinesForRoute, buildRef, fmtPort, isEnquiryLocked, ratesForRoute, today, volumeCbm, volumetricWeight } from "@/lib/utils";
+import { Button, Card, Empty, Field, Fog, Input, LinkButton, PageHeader, Select, Textarea, buttonCls } from "./ui";
 import { RouteInsights } from "./workflow";
 
 /** Best-effort extraction of enquiry fields from a customer's email */
@@ -58,7 +58,7 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
       return rest as EnquiryInput;
     }
     return {
-      branch: settings.branches[0],
+      branch: settings.branches[0]?.name ?? "",
       financialYear: settings.financialYears.at(-1)!,
       enquiryDate: today(),
       customerId: emailCustomer?.id ?? "",
@@ -106,20 +106,33 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
     !(f.chargeableWeight > 0) && "Chargeable Weight",
   ].filter(Boolean) as string[];
   const valid = missing.length === 0;
-  const nextRef = existing?.ref ?? makeRef("EQ", settings.refPrefix, state.counters.enquiry + 1, f.enquiryDate.slice(0, 4));
+  const nextRef =
+    existing?.ref ??
+    buildRef(settings.enquiryRef, { company: settings.refPrefix, pol: f.pol || "POL", pod: f.pod || "POD", year: f.enquiryDate.slice(0, 4), seq: state.counters.enquiry + 1 });
   const routeAirlines = f.pol && f.pod ? airlinesForRoute(state.airlines, f.pol, f.pod) : state.airlines;
 
   const submit = (mode: SaveMode) => {
     if (!valid) return;
     // FRD IV: with no rates in the masters, show a message and keep the user on the screen
     if (mode === "rates" && !ratesForRoute(state.rates, f.pol, f.pod, existing?.id).length) {
-      setFog(`No rates updated in the masters for ${f.pol} → ${f.pod}. Use "Save & Forward" to request rates from airlines.`);
+      setFog(`No rates updated in the masters for ${f.pol} → ${f.pod}. Use "Get Rate from Airline" to request rates, or add a rate manually from the enquiry.`);
       return;
     }
     const enq = actions.saveEnquiry(f, existing?.id);
     if (mode === "save") router.push(existing ? `/enquiries/${enq.id}` : "/enquiries");
     else router.push(`/enquiries/${enq.id}?open=${mode}`);
   };
+
+  if (existing && isEnquiryLocked(existing)) {
+    return (
+      <>
+        <PageHeader back={{ href: `/enquiries/${existing.id}`, label: existing.ref }} title={`Edit Enquiry · ${existing.ref}`} />
+        <Empty action={<LinkButton href={`/enquiries/${existing.id}`}>Back to {existing.ref}</LinkButton>}>
+          The quotation for this enquiry has been confirmed by the client ({existing.status}), so the enquiry can no longer be edited.
+        </Empty>
+      </>
+    );
+  }
 
   const portOptions = state.ports.map((p) => (
     <option key={p.code} value={p.code}>
@@ -137,7 +150,7 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
       />
 
       {email && (
-        <div className="mb-4 flex flex-wrap items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 p-4 text-sm">
+        <div className="mb-3 flex flex-wrap items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 p-3 text-sm">
           <Mail size={18} className="mt-0.5 shrink-0 text-brand-600" />
           <div className="min-w-0 flex-1">
             <div className="font-medium text-slate-800">
@@ -150,12 +163,17 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
               size="sm"
               variant="secondary"
               onClick={() => {
-                const c = actions.addCustomer({
+                const c = actions.saveCustomer({
+                  type: "Shipper/Receiver",
+                  code: "",
                   name: email.body.trim().split("\n").at(-1) || email.fromName,
                   contact: email.fromName,
                   email: email.fromEmail,
                   address: "",
                   phone: "",
+                  altEmails: [],
+                  altPhones: [],
+                  documents: [],
                 });
                 set("customerId", c.id);
               }}
@@ -167,19 +185,19 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
       )}
 
       <form
-        className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]"
+        className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_20rem]"
         onSubmit={(e) => {
           e.preventDefault();
           submit("save");
         }}
       >
-        <div className="min-w-0 space-y-6">
+        <div className="min-w-0 space-y-3">
           <Card title="Section 1 · Office selection">
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Field label="Branch">
                 <Select value={f.branch} onChange={(e) => set("branch", e.target.value)}>
                   {settings.branches.map((b) => (
-                    <option key={b}>{b}</option>
+                    <option key={b.name}>{b.name}</option>
                   ))}
                 </Select>
               </Field>
@@ -194,7 +212,7 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
           </Card>
 
           <Card title="Section 2 · Customer and routing">
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Field label="Enquiry ID" hint="System-generated">
                 <Input value={nextRef} readOnly disabled />
               </Field>
@@ -206,7 +224,7 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
                   <option value="">Select customer</option>
                   {state.customers.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name}
+                      {c.name} · {c.type}
                     </option>
                   ))}
                 </Select>
@@ -260,7 +278,7 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
           </Card>
 
           <Card title="Section 3 · Cargo details">
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Field label="Commodity *" className="col-span-2">
                 <Input value={f.commodity} onChange={(e) => set("commodity", e.target.value)} placeholder="Cargo description" required />
               </Field>
@@ -352,7 +370,7 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
               </Field>
               <div className="col-span-2 flex flex-col gap-1 sm:col-span-4">
                 <span className="text-xs font-medium text-slate-600">Airline Name(s)</span>
-                <div className="flex flex-wrap gap-x-5 gap-y-2 rounded-lg border border-slate-200 px-3 py-2.5">
+                <div className="flex flex-wrap gap-x-3 gap-y-2 rounded-lg border border-slate-200 px-3 py-2.5">
                   {routeAirlines.length ? (
                     routeAirlines.map((a) => (
                       <label key={a.id} className="flex items-center gap-1.5 text-sm">
@@ -369,7 +387,7 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
                     <span className="text-sm text-slate-400">No airline serves this route.</span>
                   )}
                 </div>
-                <span className="text-xs text-slate-400">Selected airlines are pre-ticked when you Save & Forward.</span>
+                <span className="text-xs text-slate-400">Selected airlines are pre-ticked when you use Get Rate from Airline.</span>
               </div>
               <Field label="Sales Person">
                 <Select value={f.salesPerson} onChange={(e) => set("salesPerson", e.target.value)}>
@@ -408,11 +426,11 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
               <Button type="submit" disabled={!valid}>
                 {existing ? "Save Changes" : "Save Enquiry"}
               </Button>
-              <Button variant="secondary" disabled={!valid} onClick={() => submit("rates")}>
-                Save & Get Rates
+              <Button variant="secondary" disabled={!valid} onClick={() => submit("rates")} title="Save, then compare the rates available in the masters">
+                Compare Available Rates
               </Button>
-              <Button variant="secondary" disabled={!valid} onClick={() => submit("forward")}>
-                Save & Forward
+              <Button variant="secondary" disabled={!valid} onClick={() => submit("forward")} title="Save, then request a rate from airlines by email">
+                Get Rate from Airline
               </Button>
             </div>
           </div>

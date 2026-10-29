@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { BellRing, ExternalLink, Mail, MessageCircle, Pencil, RefreshCw, Scale, Send } from "lucide-react";
+import { BellRing, ExternalLink, Lock, Mail, MessageCircle, PenLine, Pencil, RefreshCw, Scale, Send } from "lucide-react";
 import { useLookups, useStore } from "@/lib/store";
 import type { Channel, Enquiry } from "@/lib/types";
-import { fmtDate, fmtDateTime, laps, money, quoteTotals, ratesForRoute, volumeCbm } from "@/lib/utils";
+import { estimatedTotal, fmtDate, fmtDateTime, isEnquiryLocked, laps, money, quoteTotals, ratesForRoute, volumeCbm } from "@/lib/utils";
 import {
   Badge,
   Button,
@@ -24,9 +24,10 @@ import {
   Textarea,
   linkCls,
 } from "@/components/ui";
-import { ChangeStatusModal, ForwardFlow, GetRatesModal, ReminderFlow, RouteInsights, WorkflowStepper } from "@/components/workflow";
+import { ChangeStatusModal, ForwardFlow, GetRatesModal, ManualRateModal, ReminderFlow, RouteInsights, WorkflowStepper } from "@/components/workflow";
+import { DocList, DocumentsInput } from "@/components/inputs";
 
-type Dialog = { kind: "rates" | "forward" | "status" | "notify" } | { kind: "reminder"; airlineIds: string[] } | null;
+type Dialog = { kind: "rates" | "forward" | "manual" | "status" | "notify" } | { kind: "reminder"; airlineIds: string[] } | null;
 
 function EnquiryPageInner() {
   const { id } = useParams<{ id: string }>();
@@ -57,6 +58,11 @@ function EnquiryWorkspace({ enq, initialDialog }: { enq: Enquiry; initialDialog:
   const { customer, portLabel, quotation, airline } = useLookups();
   const [dialog, setDialog] = useState<Dialog>(initialDialog);
   const close = () => setDialog(null);
+
+  // "Take Action" from a quotation links here with #next-action
+  useEffect(() => {
+    if (window.location.hash === "#next-action") document.getElementById("next-action")?.scrollIntoView({ block: "start" });
+  }, []);
   const cust = customer(enq.customerId);
   const qt = quotation(enq.quotationId);
   const email = state.inbox.find((m) => m.id === enq.sourceEmailId);
@@ -86,9 +92,15 @@ function EnquiryWorkspace({ enq, initialDialog }: { enq: Enquiry; initialDialog:
         }
         actions={
           <>
-            <LinkButton href={`/enquiries/${enq.id}/edit`} variant="secondary" size="sm">
-              <Pencil size={14} aria-hidden /> Edit Enquiry
-            </LinkButton>
+            {isEnquiryLocked(enq) ? (
+              <span className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-100 px-3 text-xs font-medium text-slate-500" title="The client confirmed the quotation, so the enquiry can no longer be edited">
+                <Lock size={13} aria-hidden /> Enquiry locked
+              </span>
+            ) : (
+              <LinkButton href={`/enquiries/${enq.id}/edit`} variant="secondary" size="sm">
+                <Pencil size={14} aria-hidden /> Edit Enquiry
+              </LinkButton>
+            )}
             <Button variant="secondary" size="sm" onClick={() => setDialog({ kind: "status" })}>
               <RefreshCw size={14} aria-hidden /> Change Status
             </Button>
@@ -99,12 +111,12 @@ function EnquiryWorkspace({ enq, initialDialog }: { enq: Enquiry; initialDialog:
         }
       />
 
-      <Card className="mb-6" bodyClassName="px-2 py-4">
+      <Card className="mb-3" bodyClassName="px-2 py-3">
         <WorkflowStepper status={enq.status} />
       </Card>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="min-w-0 space-y-6">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="min-w-0 space-y-3">
           <NextAction enq={enq} openDialog={setDialog} />
 
           {enq.rateRequests.length > 0 && (
@@ -137,7 +149,7 @@ function EnquiryWorkspace({ enq, initialDialog }: { enq: Enquiry; initialDialog:
           )}
 
           <Card title="Enquiry Details">
-            <div className="space-y-5">
+            <div className="space-y-3">
               <section>
                 <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">Customer and routing</h3>
                 <KeyValue
@@ -155,7 +167,7 @@ function EnquiryWorkspace({ enq, initialDialog }: { enq: Enquiry; initialDialog:
                   ]}
                 />
               </section>
-              <section className="border-t border-slate-100 pt-4">
+              <section className="border-t border-slate-100 pt-3">
                 <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">Cargo</h3>
                 <KeyValue
                   cols={4}
@@ -173,7 +185,7 @@ function EnquiryWorkspace({ enq, initialDialog }: { enq: Enquiry; initialDialog:
                   ]}
                 />
               </section>
-              <section className="border-t border-slate-100 pt-4">
+              <section className="border-t border-slate-100 pt-3">
                 <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">Assignment</h3>
                 <KeyValue
                   cols={4}
@@ -187,6 +199,12 @@ function EnquiryWorkspace({ enq, initialDialog }: { enq: Enquiry; initialDialog:
               {enq.remarks && <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">{enq.remarks}</p>}
             </div>
           </Card>
+
+          {!!enq.documents?.length && enq.status !== "Booking in Progress" && (
+            <Card title="Documents">
+              <DocList docs={enq.documents} />
+            </Card>
+          )}
 
           {(qt || enq.booking || enq.docs || enq.shipmentDate) && (
             <Card title="Shipment Record">
@@ -207,7 +225,7 @@ function EnquiryWorkspace({ enq, initialDialog }: { enq: Enquiry; initialDialog:
           )}
         </div>
 
-        <aside className="min-w-0 space-y-6">
+        <aside className="min-w-0 space-y-3">
           {email && (
             <Card title="Source email">
               <Link href={`/mailbox?id=${email.id}`} className={`${linkCls} text-sm`}>
@@ -246,7 +264,8 @@ function EnquiryWorkspace({ enq, initialDialog }: { enq: Enquiry; initialDialog:
         </aside>
       </div>
 
-      {dialog?.kind === "rates" && <GetRatesModal enq={enq} onClose={close} onForward={() => setDialog({ kind: "forward" })} />}
+      {dialog?.kind === "rates" && <GetRatesModal enq={enq} onClose={close} onForward={() => setDialog({ kind: "forward" })} onManual={() => setDialog({ kind: "manual" })} />}
+      {dialog?.kind === "manual" && <ManualRateModal enq={enq} onClose={close} />}
       {dialog?.kind === "forward" && <ForwardFlow enq={enq} onClose={close} />}
       {dialog?.kind === "reminder" && <ReminderFlow enq={enq} airlineIds={dialog.airlineIds} onClose={close} />}
       {dialog?.kind === "status" && <ChangeStatusModal enq={enq} onClose={close} />}
@@ -313,6 +332,17 @@ function NextAction({ enq, openDialog }: { enq: Enquiry; openDialog: (d: Dialog)
   const carrier = airline(qt?.airlineId);
   const ratePhase = ["New Enquiry", "Rate Requested", "Rate Received"].includes(enq.status);
   const closed = enq.status === "Cancelled" || enq.status === "Lost";
+  // Rates gathered for this enquiry: airline replies and ones added by hand
+  const received = state.rates.filter((r) => r.enquiryId === enq.id && r.source !== "Master");
+  const quotationSent = !!qt && qt.status !== "Draft";
+  const draftNote = qt?.status === "Draft" && (
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-violet-50 p-3 text-sm text-violet-900">
+      Draft quotation {qt.ref} is ready to review and send.
+      <LinkButton href={`/quotations/${qt.id}`} size="sm">
+        Open quotation
+      </LinkButton>
+    </div>
+  );
   // A status set by hand can run ahead of the data; fall back to the step that is actually missing
   const missingQuote = !qt && !ratePhase && !closed;
   const missingJob = !j && (enq.status === "Job Created" || enq.status === "AWB Created");
@@ -332,18 +362,59 @@ function NextAction({ enq, openDialog }: { enq: Enquiry; openDialog: (d: Dialog)
         Reopen (Change Status)
       </Button>,
     );
+  } else if (enq.status === "Rate Received" && received.length) {
+    // Rates are in: pick one for the quotation. Comparing / requesting again isn't needed here.
+    body = (
+      <>
+        {draftNote}
+        <p className="mb-3 text-sm text-slate-700">
+          <b>
+            {received.length} rate{received.length > 1 && "s"} received
+          </b>{" "}
+          for this enquiry. Use one to create the quotation.
+        </p>
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full text-sm [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:text-xs [&_th]:font-medium [&_th]:text-slate-500">
+            <thead className="bg-slate-50">
+              <tr>
+                <th>Airline</th>
+                <th>Source</th>
+                <th className="text-right">Air freight / kg</th>
+                <th className="text-right">AWB fees</th>
+                <th className="text-right">Estimated total</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {received.map((r) => (
+                <tr key={r.id} className="border-t border-slate-100">
+                  <td className="font-medium">{airline(r.airlineId)?.name}</td>
+                  <td className="text-xs text-slate-500">{r.source === "Manual" ? "Added manually" : "Airline reply"}</td>
+                  <td className="text-right tabular-nums">{money(r.ratePerKg, r.currency)}</td>
+                  <td className="text-right tabular-nums">{money(r.awbFee, r.currency)}</td>
+                  <td className="text-right font-medium tabular-nums">{money(estimatedTotal(r, enq.chargeableWeight), r.currency)}</td>
+                  <td className="text-right">
+                    <Button size="sm" disabled={quotationSent} onClick={() => router.push(`/quotations/${actions.createQuotation(enq.id, r.id).id}`)}>
+                      Use Rate
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-3">
+          <Button variant="secondary" size="sm" onClick={() => openDialog({ kind: "manual" })} disabled={quotationSent}>
+            <PenLine size={14} aria-hidden /> Add Rate Manually
+          </Button>
+        </div>
+      </>
+    );
   } else if (ratePhase || missingQuote) {
     body = (
       <>
         {missingQuote && <p className="mb-3 text-sm text-amber-800">The status is <b>{enq.status}</b> but there is no quotation yet. Create one first.</p>}
-        {qt?.status === "Draft" && (
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-violet-50 p-3 text-sm text-violet-900">
-            Draft quotation {qt.ref} is ready to review and send.
-            <LinkButton href={`/quotations/${qt.id}`} size="sm">
-              Open quotation
-            </LinkButton>
-          </div>
-        )}
+        {draftNote}
         <p className="text-sm text-slate-700">
           {rates.length ? (
             <>
@@ -351,20 +422,23 @@ function NextAction({ enq, openDialog }: { enq: Enquiry; openDialog: (d: Dialog)
             </>
           ) : enq.status === "Rate Requested" ? (
             <>
-              <b>Waiting for airline rates.</b> When an airline replies, open the mail in the Mail Box and click <i>Add to Enquiry</i>.
+              <b>Waiting for airline rates.</b> When an airline replies, open the mail in the Mail Box and click <i>Add to Enquiry</i>, or add a rate you already have.
             </>
           ) : (
             <>
-              <b>No rates in the masters</b> for this POL & POD. Forward the enquiry to airlines to request rates.
+              <b>No rates in the masters</b> for this POL & POD. Request a rate from airlines, or add one you already have.
             </>
           )}
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button variant={rates.length ? "primary" : "secondary"} onClick={() => openDialog({ kind: "rates" })}>
-            <Scale size={15} aria-hidden /> Get Rates / Compare
+            <Scale size={15} aria-hidden /> Compare Available Rates
           </Button>
           <Button variant={rates.length ? "secondary" : "primary"} onClick={() => openDialog({ kind: "forward" })}>
-            <Send size={15} aria-hidden /> Save & Forward to airlines
+            <Send size={15} aria-hidden /> Get Rate from Airline
+          </Button>
+          <Button variant="secondary" onClick={() => openDialog({ kind: "manual" })}>
+            <PenLine size={15} aria-hidden /> Add Rate Manually
           </Button>
         </div>
       </>
@@ -389,7 +463,20 @@ function NextAction({ enq, openDialog }: { enq: Enquiry; openDialog: (d: Dialog)
         body = <ShipmentDateForm enq={enq} />;
         break;
       case "Booking in Progress":
-        body = <BookingForm enq={enq} portalUrl={carrier?.portalUrl} carrierName={carrier?.name} carrierCode={carrier?.code} />;
+        body = (
+          <>
+            <BookingForm enq={enq} portalUrl={carrier?.portalUrl} carrierName={carrier?.name} carrierCode={carrier?.code} />
+            <div className="mt-3 border-t border-slate-100 pt-3">
+              <h3 className="mb-2 text-sm font-semibold text-slate-800">Documents</h3>
+              <p className="mb-2 text-xs text-slate-500">Upload booking documents with a title name, e.g. Shipping Bill, Booking Confirmation, Packing List.</p>
+              <DocumentsInput
+                titled
+                value={enq.documents ?? []}
+                onChange={(docs) => actions.setEnquiryDocs(enq.id, docs)}
+              />
+            </div>
+          </>
+        );
         break;
       case "Booking Confirmed":
         body = <DocsForm enq={enq} />;
@@ -411,7 +498,17 @@ function NextAction({ enq, openDialog }: { enq: Enquiry; openDialog: (d: Dialog)
   }
 
   return (
-    <Card title="Next action" className="border-brand-200 ring-1 ring-brand-100">
+    <Card title={<span id="next-action">Next action</span>} className="scroll-mt-20 border-brand-200 ring-1 ring-brand-100">
+      {j && !["Docs Received", "Job Created", "AWB Created"].includes(enq.status) && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">
+          <span>
+            Booking/Job <b className="font-mono">{j.ref}</b> is already in the booking register. Finish the steps below; Convert to Job will reuse it.
+          </span>
+          <LinkButton href={`/shipments/${j.id}`} size="sm" variant="secondary">
+            Open Booking/Job
+          </LinkButton>
+        </div>
+      )}
       {body}
     </Card>
   );
@@ -455,7 +552,7 @@ function BookingForm({ enq, portalUrl, carrierName, carrierCode }: { enq: Enquir
         Book the shipment{carrierName && <> with <b>{carrierName}</b></>} in the airline portal{enq.shipmentDate && <> for {fmtDate(enq.shipmentDate)}</>}, then record the
         confirmation below.
       </p>
-      <div className="mb-4 flex flex-wrap gap-x-4 gap-y-1">
+      <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1">
         {portalUrl && (
           <a href={portalUrl} target="_blank" rel="noopener noreferrer" className={extLink}>
             <ExternalLink size={13} aria-hidden /> {carrierName} booking portal

@@ -1,5 +1,5 @@
-import type { AirlineRate, EmailLog, Enquiry, InboxEmail, Quotation, Settings, State } from "./types";
-import { addDays, ago, buildQuoteLines, makeRef } from "./utils";
+import type { Agent, AirlineRate, Customer, CustomerInvoice, EmailLog, Enquiry, InboxEmail, Job, Quotation, Settings, State } from "./types";
+import { addDays, ago, buildQuoteLines, buildRef, quotationRef } from "./utils";
 
 const DEFAULT_SETTINGS: Settings = {
   company: {
@@ -13,7 +13,13 @@ const DEFAULT_SETTINGS: Settings = {
     signature: "Regards,\nAirsteam Logistics Operations Team\n+91 98765 43210 | ops@airsteam.example",
   },
   refPrefix: "AIS",
-  branches: ["Kochi", "Chennai", "Mumbai"],
+  enquiryRef: { label: "EQ: ", parts: ["company", "seq", "year"], separator: "-", digits: 4 },
+  jobRef: { label: "", parts: ["company", "pol", "seq"], separator: "", digits: 4 },
+  branches: [
+    { name: "Kochi", address: "9/456, Araparambu Church Road, Vappalassery, Ernakulam – 683111", phone: "+91 98765 43210" },
+    { name: "Chennai", address: "Cargo Complex, Meenambakkam, Chennai – 600027", phone: "+91 44 4000 1200" },
+    { name: "Mumbai", address: "Sahar Cargo Complex, Andheri East, Mumbai – 400099", phone: "+91 22 2682 0000" },
+  ],
   financialYears: ["2025-26", "2026-27"],
   gstPercent: 18,
   currencies: [
@@ -40,6 +46,7 @@ const DEFAULT_SETTINGS: Settings = {
   ],
   unitTypes: ["PCS: Pieces", "NOS: Numbers", "SET: Sets", "DOZ: Dozen", "PRS: Pairs", "PAC: Packs", "ROL: Rolls"],
   clearancePlaces: ["Kochi", "Kolkata", "Mumbai"],
+  roles: ["Admin", "Sales", "Pricing", "Operations"],
   users: [
     { name: "Admin User", role: "Admin" },
     { name: "Arjun", role: "Sales" },
@@ -48,13 +55,19 @@ const DEFAULT_SETTINGS: Settings = {
     { name: "Meera", role: "Operations" },
   ],
   agencyCharges: [
-    { particulars: "CLEARANCE CHARGES", unit: "Per shipment", rate: 3500 },
-    { particulars: "TERMINAL CHARGES-TSP", unit: "Per kg", rate: 1.5 },
-    { particulars: "LOADING/UNLOADING CHARGES", unit: "Per shipment", rate: 800 },
-    { particulars: "OVERTIME CHARGES", unit: "Per shipment", rate: 0 },
-    { particulars: "CERTIFICATE OF ORIGIN", unit: "Per shipment", rate: 1500 },
+    { particulars: "CLEARANCE CHARGES", unit: "Per shipment", rate: 1500, remarks: "" },
+    { particulars: "TERMINAL CHARGES-TSP", unit: "Per kg", rate: 1.5, remarks: "AT ACTUALS" },
+    { particulars: "LOADING/UNLOADING CHARGES", unit: "Per kg", rate: 1, remarks: "AT ACTUALS" },
+    { particulars: "OVERTIME CHARGES", unit: "Per shipment", rate: 1500, remarks: "IF REQUIRED" },
+    { particulars: "CERTIFICATE OF ORIGIN", unit: "Per shipment", rate: 350, remarks: "IF REQUIRED" },
   ],
-  quotationTerms: "Rates are subject to final airline confirmation. All charges are subject to applicable taxes.",
+  quotationTerms: [
+    "1) STICKERING WILL BE SCOPE OF SHIPPER. IF NEED TO BE ARRANGED WILL BE CHARGED INR 2 /STICKER AND INR 2 FOR LABELING",
+    "2) SPACE SUBJECT TO AIRLINES CONFIRMATION",
+    "3) OVERTIME CHARGES AFTER 4:30 PM AND ON PUBLIC HOLIDAY HANDOVER WILL BE APPLICABLE WHICH WILL BE BILLED @ RS 1500/-",
+    "4) ANY OTHER INCIDENTAL CHARGES WILL BE BILLED AT ACTUALS",
+    "5) GST CHARGES APPLICABLE FOR APPROPRIATE HEADS",
+  ].join("\n"),
   alerts: {
     notifyOnQuote: true,
     notifyOnBooking: true,
@@ -67,7 +80,8 @@ const DEFAULT_SETTINGS: Settings = {
 export function createSeed(): State {
   const settings = structuredClone(DEFAULT_SETTINGS);
   const year = new Date().getFullYear();
-  const ref = (kind: "EQ" | "QT" | "JOB", no: number) => makeRef(kind, settings.refPrefix, no, year);
+  const eqRef = (no: number) => buildRef(settings.enquiryRef, { company: settings.refPrefix, year, seq: no });
+  const ref = (kind: "EQ" | "QT", no: number) => (kind === "EQ" ? eqRef(no) : quotationRef(eqRef(no), settings.enquiryRef.label));
 
   const rate = (r: Omit<AirlineRate, "currency" | "source" | "createdAt" | "transitDays"> & Partial<AirlineRate>): AirlineRate => ({
     currency: "INR",
@@ -78,14 +92,10 @@ export function createSeed(): State {
   });
 
   const rates: AirlineRate[] = [
-    rate({ id: "rt-1", airlineId: "al-ai", pol: "COK", pod: "CMB", ratePerKg: 185, awbFee: 1250, minCharge: 4500, validUntil: addDays(60) }),
-    rate({ id: "rt-2", airlineId: "al-ek", pol: "COK", pod: "CMB", ratePerKg: 210, awbFee: 950, minCharge: 5000, validUntil: addDays(38) }),
-    rate({ id: "rt-3", airlineId: "al-ul", pol: "COK", pod: "CMB", ratePerKg: 175, awbFee: 1100, minCharge: 4000, validUntil: addDays(20) }),
-    rate({ id: "rt-4", airlineId: "al-ek", pol: "COK", pod: "DXB", ratePerKg: 145, awbFee: 950, minCharge: 4200, validUntil: addDays(25) }),
-    rate({ id: "rt-5", airlineId: "al-ai", pol: "COK", pod: "DXB", ratePerKg: 130, awbFee: 1250, minCharge: 3800, validUntil: addDays(15) }),
-    rate({ id: "rt-6", airlineId: "al-qr", pol: "COK", pod: "LHR", ratePerKg: 320, awbFee: 1000, minCharge: 9000, transitDays: 2, validUntil: addDays(30) }),
-    rate({ id: "rt-7", airlineId: "al-ek", pol: "COK", pod: "LHR", ratePerKg: 335, awbFee: 950, minCharge: 9500, transitDays: 2, validUntil: addDays(22) }),
-    rate({ id: "rt-8", airlineId: "al-ai", pol: "COK", pod: "LHR", ratePerKg: 305, awbFee: 1250, minCharge: 8500, transitDays: 2, validUntil: addDays(-3) }),
+    rate({ id: "rt-1", airlineId: "al-ek", pol: "COK", pod: "DXB", ratePerKg: 145, awbFee: 950, minCharge: 4200, validUntil: addDays(25) }),
+    rate({ id: "rt-2", airlineId: "al-ai", pol: "COK", pod: "DXB", ratePerKg: 130, awbFee: 1250, minCharge: 3800, validUntil: addDays(15) }),
+    rate({ id: "rt-3", airlineId: "al-qr", pol: "COK", pod: "LHR", ratePerKg: 320, awbFee: 1000, minCharge: 9000, transitDays: 2, validUntil: addDays(30) }),
+    rate({ id: "rt-4", airlineId: "al-ek", pol: "COK", pod: "LHR", ratePerKg: 335, awbFee: 950, minCharge: 9500, transitDays: 2, validUntil: addDays(22) }),
   ];
 
   const base = {
@@ -140,50 +150,7 @@ export function createSeed(): State {
       docs: { invoiceNo: "ABC/EXP/0912", invoiceValue: 845000, packingList: true, receivedAt: ago(3) },
       jobId: "jb-1",
     }),
-    enquiry(2, 4, {
-      status: "Quote Confirmation Pending",
-      customerId: "cu-abc",
-      salesPerson: "Arjun",
-      incoterm: "CIF",
-      pol: "COK",
-      pod: "LHR",
-      commodity: "Cotton Garments",
-      productType: "Non-Perishable",
-      packageType: "Cartons",
-      packages: 20,
-      grossWeight: 340,
-      chargeableWeight: 340,
-      length: 60,
-      width: 40,
-      height: 40,
-      requestedDate: addDays(5),
-      quotationId: "qt-2",
-    }),
-    enquiry(3, 2, {
-      status: "Rate Requested",
-      customerId: "cu-msp",
-      salesPerson: "Divya",
-      incoterm: "FCA",
-      pol: "COK",
-      pod: "FRA",
-      commodity: "Black Pepper & Cardamom",
-      productType: "Non-Perishable",
-      packageType: "Bagged Cargo",
-      packages: 15,
-      grossWeight: 450,
-      chargeableWeight: 450,
-      length: 70,
-      width: 45,
-      height: 30,
-      requestedDate: addDays(7),
-      sourceEmailId: "em-3",
-      airlineIds: ["al-ek", "al-qr"],
-      rateRequests: [
-        { airlineId: "al-ek", sentAt: ago(1, 20), reminders: [] },
-        { airlineId: "al-qr", sentAt: ago(1, 20), reminders: [ago(0, 4)] },
-      ],
-    }),
-    enquiry(4, 0, {
+    enquiry(2, 0, {
       status: "New Enquiry",
       statusAt: ago(0, 5),
       customerId: "cu-csf",
@@ -203,25 +170,6 @@ export function createSeed(): State {
       requestedDate: addDays(3),
       remarks: "Temperature controlled: -18°C. Needs perishable handling.",
       sourceEmailId: "em-2",
-    }),
-    enquiry(5, 6, {
-      status: "Waiting for Shipment Date",
-      customerId: "cu-khc",
-      salesPerson: "Arjun",
-      incoterm: "FOB",
-      pol: "COK",
-      pod: "CMB",
-      commodity: "Wooden Handicrafts",
-      productType: "Non-Perishable",
-      packageType: "Wooden Cases",
-      packages: 1,
-      grossWeight: 180,
-      chargeableWeight: 180,
-      length: 140,
-      width: 140,
-      height: 50,
-      requestedDate: "",
-      quotationId: "qt-5",
     }),
   ];
 
@@ -247,34 +195,9 @@ export function createSeed(): State {
     ...extra,
   });
 
-  const quotations: Quotation[] = [
-    quotation("qt-1", enquiries[0], "rt-5", "al-ai", { status: "Booking Confirmed", sentAt: ago(8) }),
-    quotation("qt-2", enquiries[1], "rt-6", "al-qr", { status: "Quote Confirmation Pending", sentAt: ago(3) }),
-    quotation("qt-5", enquiries[4], "rt-1", "al-ai", { status: "Waiting for Shipment Date", sentAt: ago(5) }),
-  ];
+  const quotations: Quotation[] = [quotation("qt-1", enquiries[0], "rt-2", "al-ai", { status: "Booking Confirmed", sentAt: ago(8) })];
 
   const inbox: InboxEmail[] = [
-    {
-      id: "em-5",
-      from: "Airline",
-      airlineId: "al-ek",
-      fromName: "Emirates SkyCargo – Kochi",
-      fromEmail: "sales@emirates.example",
-      subject: `RE: Request for Air Freight Rate – KOCHI-COK-INDIA to FRANKFURT-FRA-GERMANY [${ref("EQ", 3)}]`,
-      body: `Dear Airsteam team,\n\nThank you for your enquiry ${ref("EQ", 3)}. Please find our rate below:\n\nRate/kg: INR 410\nAWB fee: INR 950\nMinimum charge: INR 10000\nTransit: 2 days\nValid until: ${addDays(30)}\n\nSubject to space availability at the time of booking.\n\nRegards,\nEmirates SkyCargo – Kochi`,
-      receivedAt: ago(0, 2),
-      read: false,
-    },
-    {
-      id: "em-1",
-      from: "Customer",
-      fromName: "Anitha Nair",
-      fromEmail: "anitha@keralahandicrafts.example",
-      subject: "Rate request – 12 cartons handicrafts Kochi to Colombo",
-      body: "Hi team,\n\nPlease share your best air freight rate for the shipment below:\n\nCommodity: Brass lamps and handicrafts\nPackages: 12 cartons\nGross weight: 180 kg\nDimensions: 55 x 45 x 40 cm each\nRoute: Kochi (COK) to Colombo (CMB)\nCargo ready: next week\n\nRegards,\nAnitha Nair\nKerala Handicrafts Co.",
-      receivedAt: ago(0, 1),
-      read: false,
-    },
     {
       id: "em-4",
       from: "Customer",
@@ -294,18 +217,7 @@ export function createSeed(): State {
       body: "Dear Sir,\n\nWe have 40 boxes of frozen seafood (800 kg) ready to move to Dubai this week. Temperature -18°C. Please quote.\n\nJoseph",
       receivedAt: ago(0, 6),
       read: true,
-      enquiryId: "en-4",
-    },
-    {
-      id: "em-3",
-      from: "Customer",
-      fromName: "Fathima K",
-      fromEmail: "exports@malabarspice.example",
-      subject: "Spices – Kochi to Frankfurt",
-      body: "Hi,\n\nNeed air freight rates for 15 bags of black pepper and cardamom, total 450 kg, Kochi to Frankfurt.\n\nRegards,\nFathima",
-      receivedAt: ago(2, 2),
-      read: true,
-      enquiryId: "en-3",
+      enquiryId: "en-2",
     },
   ];
 
@@ -318,11 +230,100 @@ export function createSeed(): State {
   });
 
   const emailLogs: EmailLog[] = [
-    log({ at: ago(0, 4), kind: "Rate Reminder", to: ["cargo@qatarairways.example"], subject: `Reminder: Request for Air Freight Rate – KOCHI-COK-INDIA to FRANKFURT-FRA-GERMANY [${ref("EQ", 3)}]`, body: "Gentle reminder on our rate request below.", enquiryId: "en-3" }),
-    log({ at: ago(1, 20), kind: "Rate Request", to: ["sales@emirates.example"], subject: `Request for Air Freight Rate – KOCHI-COK-INDIA to FRANKFURT-FRA-GERMANY [${ref("EQ", 3)}]`, body: "Please provide your best air freight rate for the shipment below.", enquiryId: "en-3" }),
-    log({ at: ago(1, 20), kind: "Rate Request", to: ["cargo@qatarairways.example"], subject: `Request for Air Freight Rate – KOCHI-COK-INDIA to FRANKFURT-FRA-GERMANY [${ref("EQ", 3)}]`, body: "Please provide your best air freight rate for the shipment below.", enquiryId: "en-3" }),
-    log({ at: ago(3), kind: "Quotation", to: ["rahul@abcexporters.example"], subject: `Quotation ${ref("QT", 2)} – KOCHI-COK-INDIA to LONDON HEATHROW-LHR-UNITED KINGDOM`, body: "Please find attached our quotation.", attachments: [`${ref("QT", 2)}.pdf`], enquiryId: "en-2" }),
-    log({ at: ago(5), kind: "Quotation", to: ["anitha@keralahandicrafts.example"], subject: `Quotation ${ref("QT", 5)} – KOCHI-COK-INDIA to COLOMBO-CMB-SRI LANKA`, body: "Please find attached our quotation.", attachments: [`${ref("QT", 5)}.pdf`], enquiryId: "en-5" }),
+    log({ at: ago(8), kind: "Quotation", to: ["rahul@abcexporters.example"], subject: `Quotation ${ref("QT", 1)} – KOCHI-COK-INDIA to DUBAI-DXB-UAE`, body: "Please find attached our quotation.", attachments: [`${ref("QT", 1)}.pdf`], enquiryId: "en-1" }),
+  ];
+
+  const party = { altEmails: [], altPhones: [], documents: [] };
+  const customers: Customer[] = [
+    { ...party, id: "cu-abc", type: "Shipper/Receiver", code: "ABC", name: "ABC Exporters", address: "Kochi, Kerala, India", contact: "Rahul Menon", email: "rahul@abcexporters.example", phone: "+91 98470 11223", altEmails: ["accounts@abcexporters.example"] },
+    { ...party, id: "cu-csf", type: "Shipper/Receiver", code: "CSF", name: "Coastal Seafoods Pvt Ltd", address: "Aroor, Alappuzha, Kerala, India", contact: "Joseph Thomas", email: "logistics@coastalseafoods.example", phone: "+91 98950 77881", altPhones: ["+91 484 270 1100"] },
+    { ...party, id: "cu-sky", type: "Forwarder/Logistics", code: "SKY", name: "Sky Logistics", address: "Chennai, Tamil Nadu, India", contact: "Priya", email: "agent@skylogistics.example", phone: "+91 44 4000 1200" },
+  ];
+
+  const agents: Agent[] = [
+    { ...party, id: "ag-1", type: "Overseas Agent", name: "Gulf Link Cargo LLC", contact: "Ahmed Rashid", email: "ops@gulflink.example", phone: "+971 4 555 0101", city: "Dubai", country: "UAE" },
+    { ...party, id: "ag-2", type: "CHA", name: "Kairali Customs Brokers", contact: "Suresh P", email: "cha@kairali.example", phone: "+91 484 266 1100", city: "Kochi", country: "India" },
+    { ...party, id: "ag-3", type: "Transporter", name: "Kerala Road Movers", contact: "Biju", email: "dispatch@krmovers.example", phone: "+91 98460 12345", city: "Kochi", country: "India" },
+  ];
+
+  const e1 = enquiries[0];
+  const jobs: Job[] = [
+    {
+      id: "jb-1",
+      ref: buildRef(settings.jobRef, { company: settings.refPrefix, client: "ABC", pol: e1.pol, pod: e1.pod, year, seq: 1 }),
+      enquiryId: e1.id,
+      quotationId: "qt-1",
+      createdAt: ago(2),
+      date: ago(2).slice(0, 10),
+      customerId: e1.customerId,
+      shipperId: e1.customerId,
+      shipperName: "ABC Exporters",
+      pol: e1.pol,
+      pod: e1.pod,
+      awbNo: "",
+      flightDate: e1.booking!.flightDate,
+      flightNo: e1.booking!.flightNo,
+      status: "BOOKED",
+      stock: "ASL",
+      weight: e1.chargeableWeight,
+      boxes: e1.packages,
+      commodity: "GARMENTS",
+      offload: "",
+      chaId: "ag-2",
+      chaName: "Kairali Customs Brokers",
+      rate: "130+15",
+      invoiceNo: "AIS/INV/0001/26-27",
+      tsp: "",
+      loading: "",
+      month: e1.booking!.flightDate,
+      iataCode: "AI",
+      airlineId: "al-ai",
+      years: String(year),
+      duty: "",
+      tspAdditional: "",
+      loadingAdditional: "",
+      bookingInfo: "Booking INFO",
+      additional1: "",
+      additional2: "",
+      documents: [],
+    },
+  ];
+
+  const invoices: CustomerInvoice[] = [
+    {
+      id: "iv-1",
+      no: "AIS/INV/0001/26-27",
+      date: ago(3).slice(0, 10),
+      createdAt: ago(3),
+      customerId: "cu-abc",
+      exporter: "ABC EXPORTERS\nKOCHI, KERALA, INDIA",
+      exporterRef: "",
+      iecNo: "",
+      buyerOrder: "",
+      consignee: "AL NOOR GARMENTS TRADING LLC\nP.O. BOX 12345, DEIRA\nDUBAI, UAE",
+      buyer: "",
+      preCarriage: "BY ROAD",
+      placeOfReceipt: "KOCHI",
+      flightNo: "BY AIR",
+      portOfLoading: "KOCHI",
+      portOfDischarge: "DUBAI",
+      finalDestination: "DUBAI",
+      countryOfOrigin: "INDIA",
+      countryOfDestination: "UAE",
+      terms: "FOB",
+      currency: "USD",
+      marks: "ABC/DXB",
+      packageRange: "01 TO 12 CARTONS",
+      items: [
+        { id: "it-1", description: "COTTON SHIRTS", packages: 6, quantity: 98, rate: 4.5 },
+        { id: "it-2", description: "COTTON TROUSERS", packages: 4, quantity: 72, rate: 5 },
+        { id: "it-3", description: "COTTON T-SHIRTS", packages: 2, quantity: 30, rate: 3.75 },
+      ],
+      grossWeight: 210,
+      declaration: "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.",
+      enquiryId: "en-1",
+      jobId: "jb-1",
+    },
   ];
 
   return {
@@ -344,35 +345,25 @@ export function createSeed(): State {
       { code: "JFK", name: "New York JFK", country: "USA" },
       { code: "YYZ", name: "Toronto", country: "Canada" },
     ],
-    customers: [
-      { id: "cu-abc", name: "ABC Exporters", address: "Kochi, Kerala, India", contact: "Rahul Menon", email: "rahul@abcexporters.example", phone: "+91 98470 11223" },
-      { id: "cu-msp", name: "Malabar Spice Traders", address: "Kozhikode, Kerala, India", contact: "Fathima K", email: "exports@malabarspice.example", phone: "+91 94470 55120" },
-      { id: "cu-csf", name: "Coastal Seafoods Pvt Ltd", address: "Aroor, Alappuzha, Kerala, India", contact: "Joseph Thomas", email: "logistics@coastalseafoods.example", phone: "+91 98950 77881" },
-      { id: "cu-khc", name: "Kerala Handicrafts Co.", address: "Thrissur, Kerala, India", contact: "Anitha Nair", email: "anitha@keralahandicrafts.example", phone: "+91 90370 44562" },
-    ],
-    agents: [
-      { id: "ag-1", type: "Overseas Agent", name: "Gulf Link Cargo LLC", contact: "Ahmed Rashid", email: "ops@gulflink.example", phone: "+971 4 555 0101", city: "Dubai", country: "UAE" },
-      { id: "ag-2", type: "CHA", name: "Cochin Customs Brokers", contact: "Suresh P", email: "cha@cochinbrokers.example", phone: "+91 484 266 1100", city: "Kochi", country: "India" },
-      { id: "ag-3", type: "Transporter", name: "Kerala Road Movers", contact: "Biju", email: "dispatch@krmovers.example", phone: "+91 98460 12345", city: "Kochi", country: "India" },
-      { id: "ag-4", type: "Forwarder", name: "Sky Logistics", contact: "Priya", email: "agent@skylogistics.example", phone: "+91 44 4000 1200", city: "Chennai", country: "India" },
-    ],
+    customers,
+    agents,
     airlines: [
       { id: "al-ai", name: "Air India", code: "AI", prefix: "098", email: "cargo@airindia.example", portalUrl: "https://www.airindia.com", ports: ["COK", "TRV", "MAA", "BOM", "CCU", "DEL", "BLR", "CMB", "DXB", "SIN", "LHR", "FRA", "JFK", "YYZ"] },
       { id: "al-ek", name: "Emirates SkyCargo", code: "EK", prefix: "176", email: "sales@emirates.example", portalUrl: "https://www.skychain.emirates.com", ports: ["COK", "TRV", "MAA", "BOM", "CCU", "DEL", "BLR", "CMB", "DXB", "SIN", "LHR", "FRA", "JFK", "YYZ"] },
       { id: "al-qr", name: "Qatar Airways Cargo", code: "QR", prefix: "157", email: "cargo@qatarairways.example", portalUrl: "https://www.qrcargo.com", ports: ["COK", "TRV", "MAA", "BOM", "CCU", "DEL", "BLR", "CMB", "DOH", "LHR", "FRA", "JFK", "YYZ"] },
-      { id: "al-ul", name: "SriLankan Cargo", code: "UL", prefix: "603", email: "cargo@srilankan.example", portalUrl: "https://www.srilankancargo.com", ports: ["COK", "TRV", "MAA", "BOM", "CMB", "DXB", "SIN", "LHR"] },
     ],
     rates,
     enquiries,
     quotations,
-    jobs: [{ id: "jb-1", ref: ref("JOB", 1), enquiryId: "en-1", quotationId: "qt-1", createdAt: ago(2) }],
+    jobs,
+    invoices,
     inbox,
     emailLogs,
+    drafts: [],
     notifications: [
       { id: "nt-1", at: ago(5), enquiryId: "en-1", to: "+91 98470 11223", channel: "WhatsApp", message: "Booking confirmed on AI 933. Booking ref AIB-558201. Please share the invoice & packing list." },
-      { id: "nt-2", at: ago(3), enquiryId: "en-2", to: "+91 98470 11223", channel: "WhatsApp", message: `Quotation ${ref("QT", 2)} has been emailed to you.` },
     ],
-    counters: { enquiry: 5 },
+    counters: { enquiry: 2, job: 1, invoice: 1 },
   };
 }
 

@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { isEmail } from "@/lib/utils";
 import { Button, Field, Input, Modal, Select } from "./ui";
 
 export type FormField<T> = { key: keyof T & string; label: string; required?: boolean; email?: boolean; options?: readonly string[] };
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Small add-record dialog used by the master screens */
 export function FormModal<T extends Record<string, string>>({
@@ -22,7 +22,7 @@ export function FormModal<T extends Record<string, string>>({
   onClose: () => void;
 }) {
   const [v, setV] = useState<T>(initial);
-  const errorFor = (f: FormField<T>) => (f.email && v[f.key].trim() && !EMAIL_RE.test(v[f.key].trim()) ? "Enter a valid email address" : "");
+  const errorFor = (f: FormField<T>) => (f.email && v[f.key].trim() && !isEmail(v[f.key]) ? "Enter a valid email address" : "");
   const valid = fields.every((f) => (!f.required || v[f.key].trim()) && !errorFor(f));
   return (
     <Modal

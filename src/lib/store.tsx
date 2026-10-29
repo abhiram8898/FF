@@ -10,6 +10,8 @@ import type {
   Booking,
   Channel,
   Customer,
+  CustomerInvoice,
+  Draft,
   EmailKind,
   Enquiry,
   EnquiryStatus,
@@ -21,14 +23,18 @@ import type {
   Settings,
   ShipmentDocs,
   State,
+  StoredDoc,
 } from "./types";
 import { QUOTATION_STATUSES } from "./types";
-import { addDays, buildQuoteLines, fmtPort, makeRef, uid } from "./utils";
+import { addDays, buildQuoteLines, buildRef, fmtPort, quotationRef, uid } from "./utils";
 
-const STORAGE_KEY = "airsteam-ff:v2";
+// Bumped when the saved data's shape changes, so old demo data is reseeded
+const STORAGE_KEY = "freighttask:v4";
 
 export type EnquiryInput = Omit<Enquiry, "id" | "no" | "ref" | "createdAt" | "status" | "statusAt" | "rateRequests">;
 export type RateInput = Omit<AirlineRate, "id" | "createdAt">;
+export type JobInput = Omit<Job, "id" | "ref" | "createdAt" | "awb">;
+export type InvoiceInput = Omit<CustomerInvoice, "id" | "no" | "createdAt">;
 
 interface Toast {
   id: string;
@@ -36,6 +42,66 @@ interface Toast {
 }
 
 const now = () => new Date().toISOString();
+
+/** A Booking/Job pre-filled from the confirmed quotation and its enquiry */
+export function jobDraft(s: State, enq: Enquiry, q: Quotation): JobInput {
+  const cust = s.customers.find((c) => c.id === enq.customerId);
+  const airline = s.airlines.find((a) => a.id === q.airlineId);
+  return {
+    enquiryId: enq.id,
+    quotationId: q.id,
+    date: now().slice(0, 10),
+    customerId: enq.customerId,
+    // A shipper customer usually ships their own cargo; forwarders name the shipper per booking
+    shipperId: cust?.type === "Shipper/Receiver" ? cust.id : undefined,
+    shipperName: cust?.type === "Shipper/Receiver" ? cust.name : "",
+    pol: enq.pol,
+    pod: enq.pod,
+    awbNo: "",
+    flightDate: enq.booking?.flightDate ?? enq.shipmentDate ?? "",
+    flightNo: enq.booking?.flightNo ?? "",
+    status: "BOOKED",
+    stock: "",
+    weight: enq.chargeableWeight,
+    boxes: enq.packages,
+    commodity: enq.commodity.toUpperCase(),
+    offload: "",
+    chaName: "",
+    rate: "",
+    invoiceNo: enq.docs?.invoiceNo ?? "",
+    tsp: "",
+    loading: "",
+    month: enq.booking?.flightDate ?? "",
+    iataCode: airline?.code ?? "",
+    airlineId: q.airlineId,
+    years: String(new Date().getFullYear()),
+    duty: "",
+    tspAdditional: "",
+    loadingAdditional: "",
+    bookingInfo: enq.booking ? `Booking ref ${enq.booking.ref}` : "",
+    additional1: "",
+    additional2: "",
+    documents: [],
+  };
+}
+
+/** Next Booking/Job number, from the pattern in Settings → Ref Number */
+export function nextJobRef(s: State, data: Pick<JobInput, "customerId" | "pol" | "pod" | "date">) {
+  return buildRef(s.settings.jobRef, {
+    company: s.settings.refPrefix,
+    client: s.customers.find((c) => c.id === data.customerId)?.code,
+    pol: data.pol,
+    pod: data.pod,
+    year: (data.date || now()).slice(0, 4),
+    seq: s.counters.job + 1,
+  });
+}
+
+/** Next customer invoice number, e.g. AIS/INV/0002/26-27 */
+export function nextInvoiceNo(s: State) {
+  const fy = s.settings.financialYears.at(-1)?.replace(/^20/, "") ?? "";
+  return `${s.settings.refPrefix}/INV/${String(s.counters.invoice + 1).padStart(4, "0")}/${fy}`;
+}
 
 const patchEnquiry = (s: State, id: string, patch: Partial<Enquiry>): State => ({
   ...s,
@@ -63,6 +129,7 @@ function useStoreState() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   // Actions read and write through this ref so that back-to-back calls see each other's changes.
   const ref = useRef<State | null>(null);
+  const storageWarned = useRef(false);
 
   useEffect(() => {
     let loaded: State | null = null;
@@ -80,8 +147,13 @@ function useStoreState() {
     if (!state) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      storageWarned.current = false;
     } catch {
-      /* storage full or unavailable */
+      // Usually the browser's storage quota: uploaded files are the big items
+      if (!storageWarned.current) {
+        storageWarned.current = true;
+        setToasts((t) => [...t, { id: uid(), message: "Browser storage is full. Recent changes won't survive a reload. Remove some uploaded files." }]);
+      }
     }
   }, [state]);
 
@@ -151,18 +223,20 @@ function useStoreState() {
         commit({ ...s, inbox: s.inbox.map((m) => (m.id === id ? { ...m, read: true } : m)) });
       },
 
-      addCustomer(data: Omit<Customer, "id">): Customer {
+      /** Adds a customer, or updates one when `id` is given */
+      saveCustomer(data: Omit<Customer, "id">, id?: string): Customer {
         const s = get();
-        const customer = { ...data, id: uid() };
-        commit({ ...s, customers: [...s.customers, customer] });
-        toast(`Customer ${customer.name} added`);
+        const customer = { ...data, id: id ?? uid() };
+        commit({ ...s, customers: id ? s.customers.map((c) => (c.id === id ? customer : c)) : [...s.customers, customer] });
+        toast(`Customer ${customer.name} ${id ? "updated" : "added"}`);
         return customer;
       },
 
-      addAgent(data: Omit<Agent, "id">) {
+      saveAgent(data: Omit<Agent, "id">, id?: string) {
         const s = get();
-        commit({ ...s, agents: [...s.agents, { ...data, id: uid() }] });
-        toast(`${data.type} ${data.name} added`);
+        const agent = { ...data, id: id ?? uid() };
+        commit({ ...s, agents: id ? s.agents.map((a) => (a.id === id ? agent : a)) : [...s.agents, agent] });
+        toast(`${data.type} ${data.name} ${id ? "updated" : "added"}`);
       },
 
       addAirline(data: Omit<Airline, "id">) {
@@ -196,7 +270,7 @@ function useStoreState() {
           ...data,
           id: uid(),
           no,
-          ref: makeRef("EQ", s.settings.refPrefix, no, data.enquiryDate.slice(0, 4)),
+          ref: buildRef(s.settings.enquiryRef, { company: s.settings.refPrefix, pol: data.pol, pod: data.pod, year: data.enquiryDate.slice(0, 4), seq: no }),
           createdAt: now(),
           status: "New Enquiry",
           statusAt: now(),
@@ -206,7 +280,7 @@ function useStoreState() {
           ...s,
           enquiries: [enquiry, ...s.enquiries],
           inbox: s.inbox.map((m) => (m.id === data.sourceEmailId ? { ...m, enquiryId: enquiry.id, read: true } : m)),
-          counters: { enquiry: no },
+          counters: { ...s.counters, enquiry: no },
         });
         toast(`Enquiry ${enquiry.ref} saved`);
         return enquiry;
@@ -217,35 +291,28 @@ function useStoreState() {
         toast(`Status changed to ${status}`);
       },
 
-      /** One email per airline (one rate per mail) */
-      sendRateRequest(enquiryId: string, airlineIds: string[], mail: MailDraft) {
-        let s = get();
+      /** Rate request to one airline (one rate per mail); the mail goes to the To addresses as composed */
+      sendRateRequest(enquiryId: string, airlineId: string, mail: MailDraft) {
+        let s = withLog(get(), "Rate Request", mail, enquiryId);
         const enq = s.enquiries.find((e) => e.id === enquiryId)!;
-        for (const airlineId of airlineIds) {
-          const airline = s.airlines.find((a) => a.id === airlineId)!;
-          s = withLog(s, "Rate Request", { ...mail, to: [airline.email] }, enquiryId);
-        }
-        const kept = enq.rateRequests.filter((r) => !airlineIds.includes(r.airlineId));
+        const airline = s.airlines.find((a) => a.id === airlineId);
         s = patchEnquiry(s, enquiryId, {
-          rateRequests: [...kept, ...airlineIds.map((airlineId) => ({ airlineId, sentAt: now(), reminders: [] }))],
+          rateRequests: [...enq.rateRequests.filter((r) => r.airlineId !== airlineId), { airlineId, sentAt: now(), reminders: [] }],
         });
         if (enq.status === "New Enquiry") s = setStatus(s, enquiryId, "Rate Requested");
         commit(s);
-        toast(`Rate request sent to ${airlineIds.length} airline${airlineIds.length > 1 ? "s" : ""}`);
+        toast(`Rate request sent to ${airline?.name ?? "airline"}`);
       },
 
-      sendRateReminder(enquiryId: string, airlineIds: string[], mail: MailDraft) {
-        let s = get();
+      sendRateReminder(enquiryId: string, airlineId: string, mail: MailDraft) {
+        let s = withLog(get(), "Rate Reminder", mail, enquiryId);
         const enq = s.enquiries.find((e) => e.id === enquiryId)!;
-        for (const airlineId of airlineIds) {
-          const airline = s.airlines.find((a) => a.id === airlineId)!;
-          s = withLog(s, "Rate Reminder", { ...mail, to: [airline.email] }, enquiryId);
-        }
+        const airline = s.airlines.find((a) => a.id === airlineId);
         s = patchEnquiry(s, enquiryId, {
-          rateRequests: enq.rateRequests.map((r) => (airlineIds.includes(r.airlineId) ? { ...r, reminders: [...r.reminders, now()] } : r)),
+          rateRequests: enq.rateRequests.map((r) => (r.airlineId === airlineId ? { ...r, reminders: [...r.reminders, now()] } : r)),
         });
         commit(s);
-        toast(`Reminder sent to ${airlineIds.length} airline${airlineIds.length > 1 ? "s" : ""}`);
+        toast(`Reminder sent to ${airline?.name ?? "airline"}`);
       },
 
       /** Demo helper: drops an airline's rate reply into the Mailbox */
@@ -270,11 +337,26 @@ function useStoreState() {
         toast(`Reply from ${airline.name} received in Mail Box`);
       },
 
-      /** "Add to Enquiry" on an airline reply: links the mail, stores the rate, and moves to Rate Received */
-      addReplyToEnquiry(emailId: string, enquiryId: string, rate: RateInput, saveToMaster: boolean) {
+      /** A rate found elsewhere (e.g. an open source) entered by hand for one enquiry */
+      addManualRate(enquiryId: string, rate: RateInput, saveToMaster: boolean): string {
         let s = get();
         const enq = s.enquiries.find((e) => e.id === enquiryId)!;
-        const newRates: AirlineRate[] = [{ ...rate, source: "Airline Reply", enquiryId, id: uid(), createdAt: now() }];
+        const id = uid();
+        const newRates: AirlineRate[] = [{ ...rate, source: "Manual", enquiryId, id, createdAt: now() }];
+        if (saveToMaster) newRates.push({ ...rate, source: "Master", enquiryId: undefined, id: uid(), createdAt: now() });
+        s = { ...s, rates: [...s.rates, ...newRates] };
+        if (enq.status === "New Enquiry" || enq.status === "Rate Requested") s = setStatus(s, enquiryId, "Rate Received");
+        commit(s);
+        toast(`Rate added to ${enq.ref}`);
+        return id;
+      },
+
+      /** "Add to Enquiry" on an airline reply: links the mail, stores the rate, and moves to Rate Received. Returns the new rate's id. */
+      addReplyToEnquiry(emailId: string, enquiryId: string, rate: RateInput, saveToMaster: boolean): string {
+        let s = get();
+        const enq = s.enquiries.find((e) => e.id === enquiryId)!;
+        const rateId = uid();
+        const newRates: AirlineRate[] = [{ ...rate, source: "Airline Reply", enquiryId, id: rateId, createdAt: now() }];
         if (saveToMaster) newRates.push({ ...rate, source: "Master", enquiryId: undefined, id: uid(), createdAt: now() });
         s = {
           ...s,
@@ -290,6 +372,15 @@ function useStoreState() {
         if (enq.status === "New Enquiry" || enq.status === "Rate Requested") s = setStatus(s, enquiryId, "Rate Received");
         commit(s);
         toast(`Rate added to ${enq.ref}`);
+        return rateId;
+      },
+
+      /** Replaces the enquiry's uploaded documents (adds, removes and title edits) */
+      setEnquiryDocs(enquiryId: string, docs: StoredDoc[]) {
+        const s = get();
+        const before = s.enquiries.find((e) => e.id === enquiryId)?.documents?.length ?? 0;
+        commit(patchEnquiry(s, enquiryId, { documents: docs }));
+        if (docs.length > before) toast(`${docs.length - before} document${docs.length - before > 1 ? "s" : ""} uploaded`);
       },
 
       /** Quotation ID is the enquiry ID ("EQ: AIS-0005-2026" → "QT: AIS-0005-2026") */
@@ -303,7 +394,7 @@ function useStoreState() {
         const currency = rate?.currency ?? "INR";
         const quotation: Quotation = {
           id: existing?.id ?? uid(),
-          ref: enq.ref.replace(/^EQ:/, "QT:"),
+          ref: quotationRef(enq.ref, s.settings.enquiryRef.label),
           enquiryId,
           rateId,
           createdAt: now(),
@@ -382,6 +473,25 @@ function useStoreState() {
         toast("Invoice & packing list recorded");
       },
 
+      /** "+ Add Booking": a Booking/Job from a confirmed quotation */
+      createJob(data: JobInput): Job {
+        let s = get();
+        const job: Job = { ...data, id: uid(), ref: nextJobRef(s, data), createdAt: now() };
+        s = { ...s, jobs: [job, ...s.jobs], counters: { ...s.counters, job: s.counters.job + 1 } };
+        s = patchEnquiry(s, data.enquiryId, { jobId: job.id });
+        const enq = s.enquiries.find((e) => e.id === data.enquiryId);
+        if (enq && (enq.status === "Booking Confirmed" || enq.status === "Docs Received")) s = setStatus(s, enq.id, "Job Created");
+        commit(s);
+        toast(`Booking/Job ${job.ref} created`);
+        return job;
+      },
+
+      updateJob(id: string, patch: Partial<Job>) {
+        const s = get();
+        commit({ ...s, jobs: s.jobs.map((j) => (j.id === id ? { ...j, ...patch } : j)) });
+        toast("Booking/Job saved");
+      },
+
       convertToJob(enquiryId: string): Job {
         const s = get();
         const enq = s.enquiries.find((e) => e.id === enquiryId)!;
@@ -391,28 +501,61 @@ function useStoreState() {
           commit(setStatus(s, enquiryId, existing.awb ? "AWB Created" : "Job Created"));
           return existing;
         }
-        const job: Job = {
-          id: uid(),
-          ref: enq.ref.replace(/^EQ:/, "JOB:"),
-          enquiryId,
-          quotationId: enq.quotationId!,
-          createdAt: now(),
-        };
-        const next = setStatus(patchEnquiry({ ...s, jobs: [job, ...s.jobs] }, enquiryId, { jobId: job.id }), enquiryId, "Job Created");
-        commit(next);
-        toast(`Quotation converted to ${job.ref}`);
+        const q = s.quotations.find((x) => x.id === enq.quotationId)!;
+        const job = this.createJob(jobDraft(s, enq, q));
+        commit(setStatus(get(), enquiryId, "Job Created"));
         return job;
+      },
+
+      saveInvoice(data: InvoiceInput, id?: string): CustomerInvoice {
+        const s = get();
+        if (id) {
+          const inv = { ...s.invoices.find((x) => x.id === id)!, ...data };
+          commit({ ...s, invoices: s.invoices.map((x) => (x.id === id ? inv : x)) });
+          toast(`Invoice ${inv.no} saved`);
+          return inv;
+        }
+        const inv: CustomerInvoice = { ...data, id: uid(), no: nextInvoiceNo(s), createdAt: now() };
+        commit({ ...s, invoices: [inv, ...s.invoices], counters: { ...s.counters, invoice: s.counters.invoice + 1 } });
+        toast(`Invoice ${inv.no} created`);
+        return inv;
+      },
+
+      deleteInvoice(id: string) {
+        const s = get();
+        commit({ ...s, invoices: s.invoices.filter((x) => x.id !== id) });
       },
 
       createAwb(jobId: string, awb: Awb) {
         let s = get();
         const job = s.jobs.find((j) => j.id === jobId)!;
-        s = { ...s, jobs: s.jobs.map((j) => (j.id === jobId ? { ...j, awb } : j)) };
+        s = { ...s, jobs: s.jobs.map((j) => (j.id === jobId ? { ...j, awb, awbNo: awb.number, flightNo: j.flightNo || awb.flightNo, flightDate: j.flightDate || awb.flightDate } : j)) };
         s = setStatus(s, job.enquiryId, "AWB Created");
         if (s.settings.alerts.notifyOnAwb) {
           s = withNotification(s, job.enquiryId, `${awb.type} AWB ${awb.number} issued for your shipment on ${awb.flightNo}.`, "Email");
         }
         commit(s);
+      },
+
+      /** Mail Box → Compose: saves a draft, or updates it when `id` is given */
+      saveDraft(draft: Omit<Draft, "id" | "savedAt">, id?: string): Draft {
+        const s = get();
+        const d: Draft = { ...draft, id: id ?? uid(), savedAt: now() };
+        commit({ ...s, drafts: [d, ...s.drafts.filter((x) => x.id !== d.id)] });
+        toast("Draft saved");
+        return d;
+      },
+
+      deleteDraft(id: string) {
+        const s = get();
+        commit({ ...s, drafts: s.drafts.filter((d) => d.id !== id) });
+      },
+
+      /** Mail Box → Compose: sends a general mail and drops its draft */
+      sendMail(mail: MailDraft, enquiryId?: string, draftId?: string) {
+        const s = withLog(get(), "General", mail, enquiryId);
+        commit({ ...s, drafts: s.drafts.filter((d) => d.id !== draftId) });
+        toast("Email sent");
       },
 
       notify(enquiryId: string, message: string, channel: Channel) {
@@ -448,7 +591,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       {children}
       <div className="pointer-events-none fixed inset-x-4 bottom-4 z-50 flex flex-col items-end gap-2" role="status" aria-live="polite">
         {toasts.map((t) => (
-          <div key={t.id} className="max-w-sm rounded-lg bg-slate-900 px-4 py-2.5 text-sm text-white shadow-lg">
+          <div key={t.id} className="max-w-sm rounded-lg bg-slate-900 px-3 py-2.5 text-sm text-white shadow-lg">
             {t.message}
           </div>
         ))}

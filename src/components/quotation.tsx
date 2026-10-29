@@ -3,115 +3,158 @@
 import { useState } from "react";
 import { useLookups, useStore } from "@/lib/store";
 import { QUOTATION_STATUSES, type Quotation, type QuotationStatus } from "@/lib/types";
-import { fmtDate, fmtDateTime, lineGst, lineNet, lineTotal, money, quoteTotals, volumeCbm } from "@/lib/utils";
+import { fmtDate, fmtDateTime, lineGst, lineNet, money, quoteTotals, volumetricWeight } from "@/lib/utils";
 import { ComposeEmail } from "./ComposeEmail";
+import { FooterBanner, Letterhead } from "./letterhead";
 import { Button, Field, Modal, Select, StatusBadge } from "./ui";
 
-/** Printable sales quotation (FRD p.11–12) */
+/** Printable sales quotation, laid out like the company's sample */
 function QuotationDocument({ q }: { q: Quotation }) {
   const { state } = useStore();
   const { enquiry, customer, airline, portLabel } = useLookups();
   const enq = enquiry(q.enquiryId)!;
   const cust = customer(enq.customerId);
+  const rate = state.rates.find((r) => r.id === q.rateId);
   const t = quoteTotals(q);
   const { company } = state.settings;
+  const f2 = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const groups = [
     { title: airline(q.airlineId)?.name.toUpperCase() ?? "AIRLINE CHARGES", lines: q.lines.filter((l) => l.group === "Airline") },
-    { title: "AGENCY / CLEARANCE CHARGES", lines: q.lines.filter((l) => l.group === "Agency") },
-  ];
+    { title: "", lines: q.lines.filter((l) => l.group === "Agency") },
+  ].filter((g) => g.lines.length);
+
+  const info = (rows: [string, React.ReactNode][]) => (
+    <dl className="grid grid-cols-[8.5rem_minmax(0,1fr)] gap-x-2 gap-y-0.5">
+      {rows.map(([k, v]) => [
+        <dt key={`${k}-k`} className="font-semibold">
+          {k}
+        </dt>,
+        <dd key={`${k}-v`}>: {v}</dd>,
+      ])}
+    </dl>
+  );
+  const cell = "border border-navy-700/60 px-2 py-1.5";
 
   return (
-    <div className="text-sm text-slate-800">
-      <div className="flex items-start justify-between gap-4 border-b-2 border-brand-700 pb-3">
-        <div>
-          <div className="text-lg font-bold text-brand-800">{company.name}</div>
-          <div className="max-w-sm text-xs text-slate-500">{company.address}</div>
-          <div className="text-xs text-slate-500">
-            {company.phone} · {company.email}
-          </div>
-          <div className="text-xs text-slate-500">
-            GSTIN: {company.gstin} · PAN: {company.pan}
+    <div className="text-xs text-navy-800">
+      <Letterhead />
+      <div className="mb-3 text-center text-sm font-bold">SALES QUOTATION</div>
+
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+        <div className="flex gap-2">
+          <span className="font-semibold">To</span>
+          <div>
+            <div className="font-semibold">M/s. {cust?.name}</div>
+            <div className="whitespace-pre-line">{cust?.address}</div>
+            {q.kindlyAttention && <div>Kind Attn: {q.kindlyAttention}</div>}
           </div>
         </div>
-        <div className="text-right">
-          <div className="font-semibold">SALES QUOTATION</div>
-          <div className="text-xs">Quotation No: {q.ref}</div>
-          <div className="text-xs text-slate-500">Date: {fmtDate(q.createdAt)}</div>
-        </div>
+        {info([
+          ["Quotation No", <b key="no">{q.ref}</b>],
+          ["Date", fmtDate(q.createdAt)],
+        ])}
       </div>
 
-      <div className="mt-3 grid gap-4 text-xs sm:grid-cols-2">
-        <div>
-          <div className="font-semibold">To</div>
-          <div>{cust?.name}</div>
-          <div>{cust?.address}</div>
-          <div>{cust?.email}</div>
-          {q.kindlyAttention && <div>Kind Attn: {q.kindlyAttention}</div>}
-        </div>
-        <div>
-          <div className="font-semibold">Shipment Details</div>
-          <div>
-            Mode: {enq.cargoMode} · {enq.shipmentMode} · {enq.incoterm}
-          </div>
-          <div>POL: {portLabel(enq.pol)}</div>
-          <div>POD: {portLabel(enq.pod)}</div>
-          <div>Commodity: {enq.commodity}</div>
-          <div>
-            Weight: {enq.grossWeight} kg (chargeable {enq.chargeableWeight} kg) · CBM: {volumeCbm(enq).toFixed(4)}
-          </div>
-          <div>Dimension: {q.cargoDimension}</div>
-        </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+        {info([
+          ["Terms of Shipment", `${enq.incoterm} ${enq.cargoMode.toUpperCase()}`],
+          ["Port of Loading", portLabel(enq.pol)],
+          ["Port of Discharge", portLabel(enq.pod)],
+          ["Commodity", enq.commodity.toUpperCase()],
+        ])}
+        {info([
+          ["Dimension", q.cargoDimension],
+          ["Total Packages", f2(enq.packages)],
+          ["Gross Weight", f2(enq.grossWeight)],
+          ["Volume Weight", f2(Math.max(volumetricWeight(enq), enq.chargeableWeight))],
+        ])}
       </div>
 
-      <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[40rem] text-xs">
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[44rem] border-collapse">
           <thead>
-            <tr className="bg-brand-700 text-white [&>th]:px-2 [&>th]:py-1.5 [&>th]:text-left">
-              <th>Particulars</th>
+            <tr className="font-semibold [&>th]:border [&>th]:border-navy-700/60 [&>th]:px-2 [&>th]:py-2">
+              <th className="text-left">Particulars</th>
               <th>Currency</th>
               <th className="text-right">Rate</th>
-              <th className="text-right">Markup</th>
-              <th className="text-right">Qty</th>
+              <th className="text-right">Unit</th>
               <th className="text-right">Ex Rate</th>
               <th className="text-right">Net Amount</th>
-              <th className="text-right">GST</th>
-              <th className="text-right">Total</th>
+              <th className="text-right">GST%</th>
+              <th className="text-right">Total GST</th>
+              <th>Remarks</th>
             </tr>
           </thead>
           <tbody>
-            {groups.map((g) => [
-              <tr key={g.title} className="bg-slate-50">
-                <td colSpan={9} className="px-2 py-1 font-semibold text-brand-800 underline">
-                  {g.title}
-                </td>
-              </tr>,
-              ...g.lines.map((l) => (
-                <tr key={l.id} className="border-b border-slate-100 [&>td]:px-2 [&>td]:py-1.5">
-                  <td>{l.particulars}</td>
-                  <td>{q.currency}</td>
-                  <td className="text-right">{l.rate.toFixed(2)}</td>
-                  <td className="text-right">{l.markup.toFixed(2)}</td>
-                  <td className="text-right">{l.qty}</td>
-                  <td className="text-right">{q.roe.toFixed(2)}</td>
-                  <td className="text-right">{lineNet(l, q.roe).toFixed(2)}</td>
-                  <td className="text-right">
-                    {lineGst(l, q.roe).toFixed(2)} ({l.gstPercent}%)
-                  </td>
-                  <td className="text-right">{lineTotal(l, q.roe).toFixed(2)}</td>
-                </tr>
-              )),
-            ])}
+            {groups.map((g) => {
+              const net = g.lines.reduce((s, l) => s + lineNet(l, q.roe), 0);
+              const gst = g.lines.reduce((s, l) => s + lineGst(l, q.roe), 0);
+              return [
+                g.title && (
+                  <tr key={`${g.title}-h`}>
+                    <td colSpan={9} className={`${cell} font-bold underline`}>
+                      {g.title}
+                    </td>
+                  </tr>
+                ),
+                ...g.lines.map((l) => (
+                  <tr key={l.id} className="font-semibold">
+                    <td className={cell}>{l.particulars}</td>
+                    <td className={`${cell} text-center`}>{q.currency}</td>
+                    {/* The customer sees the selling rate: rate + markup */}
+                    <td className={`${cell} text-right tabular-nums`}>{f2(l.rate + l.markup)}</td>
+                    <td className={`${cell} text-right tabular-nums`}>{f2(l.qty)}</td>
+                    <td className={`${cell} text-right tabular-nums`}>{f2(q.roe)}</td>
+                    <td className={`${cell} text-right tabular-nums`}>{f2(lineNet(l, q.roe))}</td>
+                    <td className={`${cell} text-right tabular-nums`}>{f2(l.gstPercent)}</td>
+                    <td className={`${cell} text-right tabular-nums`}>{f2(lineGst(l, q.roe))}</td>
+                    <td className={cell}>{l.remarks}</td>
+                  </tr>
+                )),
+                <tr key={`${g.title}-t`} className="font-semibold">
+                  <td className={cell} colSpan={4} />
+                  <td className={`${cell} text-right`}>Total</td>
+                  <td className={`${cell} text-right tabular-nums`}>{f2(net)}</td>
+                  <td className={cell} />
+                  <td className={`${cell} text-right tabular-nums`}>{f2(gst)}</td>
+                  <td className={`${cell} text-right tabular-nums`}>{f2(net + gst)}</td>
+                </tr>,
+              ];
+            })}
+            <tr className="font-semibold">
+              <td className={cell} colSpan={5}>
+                <span className="float-right">Total</span>
+              </td>
+              <td className={`${cell} text-right tabular-nums`}>{f2(t.net)}</td>
+              <td className={cell} />
+              <td className={`${cell} text-right tabular-nums`}>{f2(t.gst)}</td>
+              <td className={cell} />
+            </tr>
           </tbody>
         </table>
       </div>
-      <div className="mt-3 text-right text-sm font-semibold">Grand Total: {money(t.grand)}</div>
 
-      <div className="mt-4 text-xs">
-        <div className="font-semibold">Notes / Terms & Conditions</div>
-        <p className="whitespace-pre-wrap text-slate-600">{q.terms}</p>
-        <pre className="mt-3 font-sans whitespace-pre-wrap text-slate-600">{company.signature}</pre>
+      <div className="mt-2 grid gap-3 sm:grid-cols-2">
+        {info([
+          ["Routing", enq.route.toUpperCase()],
+          ["Transit Time", enq.transitTime || (rate ? `${rate.transitDays} day${rate.transitDays !== 1 ? "s" : ""}` : "")],
+          ["Rate Validity", rate ? fmtDate(rate.validUntil) : ""],
+        ])}
+        <div className="flex items-start justify-end gap-3 text-sm font-bold">
+          Grand Total <span className="min-w-32 border border-navy-700/60 px-2 py-1 text-right tabular-nums">{f2(t.grand)}</span>
+        </div>
       </div>
+
+      <div className="mt-3">
+        <div className="font-semibold">Notes:</div>
+        <p className="whitespace-pre-wrap">{q.terms}</p>
+      </div>
+      <div className="mt-3 text-right font-semibold">
+        For {company.name.toUpperCase()}
+        <div className="mt-10">Authorised Signatory</div>
+      </div>
+      <FooterBanner />
     </div>
   );
 }
@@ -171,6 +214,17 @@ export function SendQuotationFlow({ q, reminder, onClose }: { q: Quotation; remi
       }}
     />
   );
+}
+
+/**
+ * Where "Take Action" leads for a quotation: the editor while it's a draft, the status / reminder
+ * dialog while waiting on the client (null), and otherwise the enquiry's next step
+ * (shipment date, booking, documents…).
+ */
+export function takeActionHref(q: Quotation): string | null {
+  if (q.status === "Draft") return `/quotations/${q.id}`;
+  if (q.status === "Quote Confirmation Pending") return null;
+  return `/enquiries/${q.enquiryId}#next-action`;
 }
 
 /** FRD XVI / XVIII: Quotation Actions (update status, send reminder) */

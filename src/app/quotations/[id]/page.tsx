@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
-import { Eye, Plane, Plus, ReceiptText, Settings2, Trash2 } from "lucide-react";
+import { ArrowRight, Eye, Plane, Plus, ReceiptText, Settings2, Trash2 } from "lucide-react";
 import { useLookups, useStore } from "@/lib/store";
 import type { ChargeGroup, Quotation, QuoteLine } from "@/lib/types";
 import { fmtDate, lineGst, lineNet, lineTotal, money, quoteTotals, uid, volumeCbm } from "@/lib/utils";
 import { Button, Card, Empty, Field, Input, KeyValue, LinkButton, PageHeader, Select, StatusBadge, Textarea, linkCls } from "@/components/ui";
-import { PreviewModal, QuotationActionsModal, SendQuotationFlow } from "@/components/quotation";
+import { PreviewModal, QuotationActionsModal, SendQuotationFlow, takeActionHref } from "@/components/quotation";
 
 export default function QuotationPage() {
   const { id } = useParams<{ id: string }>();
@@ -37,6 +37,7 @@ const editable = (x: Quotation) => ({
 });
 
 function QuotationEditor({ q }: { q: Quotation }) {
+  const router = useRouter();
   const { state, actions } = useStore();
   const { enquiry, customer, portLabel } = useLookups();
   const enq = enquiry(q.enquiryId)!;
@@ -98,19 +99,33 @@ function QuotationEditor({ q }: { q: Quotation }) {
           </>
         }
         actions={
-          <Button variant="secondary" size="sm" onClick={() => setDialog("actions")}>
-            <Settings2 size={14} /> Quotation Actions
-          </Button>
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setDialog("actions")}>
+              <Settings2 size={14} /> Quotation Actions
+            </Button>
+            {q.status !== "Draft" && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  const href = takeActionHref(q);
+                  if (href) router.push(href);
+                  else setDialog("actions");
+                }}
+              >
+                Take Action <ArrowRight size={14} aria-hidden />
+              </Button>
+            )}
+          </>
         }
       />
 
-      <div className="space-y-6">
+      <div className="space-y-3">
         <Card title="Enquiry Details" actions={<span className="text-xs text-slate-400">Auto-populated from enquiry</span>}>
           <KeyValue cols={4} items={banner} />
         </Card>
 
         <Card>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <Field label="Cargo Dimension" className="col-span-2">
               <Input value={draft.cargoDimension} disabled={locked} onChange={(e) => setDraft({ ...draft, cargoDimension: e.target.value })} />
             </Field>
@@ -154,7 +169,7 @@ function QuotationEditor({ q }: { q: Quotation }) {
 
         {(["Airline", "Agency"] as ChargeGroup[]).map((group) => (
           <section key={group} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <header className="flex items-center justify-between bg-brand-700 px-4 py-2.5 text-white">
+            <header className="flex items-center justify-between bg-brand-700 px-3 py-2.5 text-white">
               <h2 className="flex items-center gap-2 text-sm font-semibold">
                 {group === "Airline" ? <Plane size={15} /> : <ReceiptText size={15} />}
                 {group === "Airline" ? "Airline Charges" : "Clearance / Agency Charges"}
@@ -166,7 +181,7 @@ function QuotationEditor({ q }: { q: Quotation }) {
               )}
             </header>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[60rem] text-sm">
+              <table className="w-full min-w-[68rem] text-sm">
                 <thead className="bg-slate-50 text-xs text-slate-500">
                   <tr className="[&>th]:px-2 [&>th]:py-2 [&>th]:text-left [&>th]:font-medium">
                     <th className="w-8">#</th>
@@ -179,6 +194,7 @@ function QuotationEditor({ q }: { q: Quotation }) {
                     <th>GST%</th>
                     <th className="text-right">Total GST</th>
                     <th className="text-right">Total Amount</th>
+                    <th>Remarks</th>
                     <th>Action</th>
                   </tr>
                 </thead>
@@ -219,6 +235,9 @@ function QuotationEditor({ q }: { q: Quotation }) {
                         <td className="text-right tabular-nums">{lineGst(l, draft.roe).toFixed(2)}</td>
                         <td className="text-right font-medium tabular-nums">{lineTotal(l, draft.roe).toFixed(2)}</td>
                         <td>
+                          <Input aria-label="Remarks" className="w-32" placeholder="e.g. AT ACTUALS" value={l.remarks ?? ""} disabled={locked} onChange={(e) => setLine(l.id, { remarks: e.target.value.toUpperCase() })} />
+                        </td>
+                        <td>
                           {!locked && (
                             <button onClick={() => removeLine(l.id)} className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Remove">
                               <Trash2 size={14} />
@@ -233,7 +252,7 @@ function QuotationEditor({ q }: { q: Quotation }) {
           </section>
         ))}
 
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
           <div className="text-xs text-emerald-800">
             Airline {money(totals.airline)} · Agency {money(totals.agency)} · GST {money(totals.gst)} · Expected profit {money(totals.profit)}
           </div>

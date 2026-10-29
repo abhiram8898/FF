@@ -4,17 +4,34 @@
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }
 
-/* Brand palette, based on the slate-teal used in the process flow */
+/*
+ * FreightTask palette, from the logo and app design:
+ * navy (logo, header bar, login panel), brand blue (buttons, active states, links) and gold (accents).
+ */
 @theme {
-  --color-brand-50: #f1f7f8;
-  --color-brand-100: #dcebee;
-  --color-brand-200: #bcd8de;
-  --color-brand-300: #8fbcc6;
-  --color-brand-500: #4f8a98;
-  --color-brand-600: #437885;
-  --color-brand-700: #39626d;
-  --color-brand-800: #31515a;
-  --color-brand-900: #1f363d;
+  --color-navy-600: #0d3c80;
+  --color-navy-700: #04316a;
+  --color-navy-800: #062a5a;
+  --color-navy-900: #071f44;
+
+  --color-brand-50: #eff5ff;
+  --color-brand-100: #dbe8fe;
+  --color-brand-200: #bfd5fe;
+  --color-brand-300: #93b8fd;
+  --color-brand-400: #5f93f9;
+  --color-brand-500: #3b72f2;
+  --color-brand-600: #2259e0;
+  --color-brand-700: #1b47c0;
+  --color-brand-800: #1c3d9b;
+  --color-brand-900: #1c357a;
+
+  --color-gold-50: #fdf7ea;
+  --color-gold-100: #f9eac6;
+  --color-gold-300: #ecc574;
+  --color-gold-400: #e5b14a;
+  --color-gold-500: #dfa131;
+  --color-gold-600: #c0861d;
+  --color-gold-700: #96661a;
 }
 
 body {

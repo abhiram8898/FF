@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Inbox, MoreVertical, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { ArrowLeft, Inbox, MoreHorizontal, RefreshCw, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { EnquiryStatus, QuotationStatus } from "@/lib/types";
 import { STATUS_TONE, cn } from "@/lib/utils";
@@ -14,8 +15,8 @@ export const buttonCls = (variant: Variant, size: Size, className?: string) =>
     "inline-flex items-center justify-center gap-1.5 rounded-lg font-medium whitespace-nowrap transition-colors",
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500",
     "disabled:cursor-not-allowed disabled:opacity-50",
-    size === "sm" ? "h-8 px-3 text-xs" : "h-9 px-3.5 text-sm",
-    variant === "primary" && "bg-brand-600 text-white shadow-sm hover:bg-brand-700",
+    size === "sm" ? "h-8 px-3 text-xs" : "h-9 px-3 text-sm",
+    variant === "primary" && "bg-navy-900 text-white shadow-sm hover:bg-navy-700",
     variant === "secondary" && "bg-white text-slate-700 shadow-xs ring-1 ring-slate-300 ring-inset hover:bg-slate-50",
     variant === "ghost" && "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
     variant === "danger" && "bg-white text-red-600 ring-1 ring-red-200 ring-inset hover:bg-red-50",
@@ -60,12 +61,12 @@ export function Card({
   return (
     <section className={cn("min-w-0 rounded-xl border border-slate-200 bg-white shadow-xs", className)}>
       {(title || actions) && (
-        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-3">
           <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
           {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </header>
       )}
-      <div className={bodyClassName ?? "p-4"}>{children}</div>
+      <div className={bodyClassName ?? "p-3"}>{children}</div>
     </section>
   );
 }
@@ -82,7 +83,7 @@ export function PageHeader({
   back?: { href: string; label: string };
 }) {
   return (
-    <div className="mb-6">
+    <div className="mb-3">
       {back && (
         <Link href={back.href} className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800">
           <ArrowLeft size={13} /> {back.label}
@@ -208,7 +209,7 @@ export function Modal({
 
   if (!open) return null;
   return (
-    <div className="modal-overlay fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-3 sm:p-8" onMouseDown={onClose}>
+    <div className="modal-overlay fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-3 sm:p-3" onMouseDown={onClose}>
       <div
         ref={dialogRef}
         tabIndex={-1}
@@ -218,14 +219,14 @@ export function Modal({
         aria-modal="true"
         aria-label={title}
       >
-        <header className="no-print flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-3.5">
+        <header className="no-print flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-3">
           <h2 className="text-base font-semibold text-slate-900">{title}</h2>
           <button onClick={onClose} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800" aria-label="Close">
             <X size={16} />
           </button>
         </header>
-        <div className="modal-body p-5">{children}</div>
-        {footer && <footer className="no-print flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3">{footer}</footer>}
+        <div className="modal-body p-3">{children}</div>
+        {footer && <footer className="no-print flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-3 py-3">{footer}</footer>}
       </div>
     </div>
   );
@@ -233,7 +234,7 @@ export function Modal({
 
 export function Empty({ children, action, icon: Icon = Inbox }: { children: React.ReactNode; action?: React.ReactNode; icon?: React.ElementType }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-slate-300 px-6 py-10 text-center text-sm text-slate-500">
+    <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-3 text-center text-sm text-slate-500">
       <Icon size={22} className="text-slate-400" aria-hidden />
       <div>{children}</div>
       {action}
@@ -260,7 +261,7 @@ export function KeyValue({ items, cols = 3, compact }: { items: [string, React.R
         "grid grid-cols-2",
         cols >= 3 && "sm:grid-cols-3",
         cols === 4 && "xl:grid-cols-4",
-        compact ? "gap-x-4 gap-y-2 text-xs" : "gap-x-4 gap-y-3 text-sm",
+        compact ? "gap-x-3 gap-y-2 text-xs" : "gap-x-3 gap-y-3 text-sm",
       )}
     >
       {items.map(([k, v]) => (
@@ -275,7 +276,7 @@ export function KeyValue({ items, cols = 3, compact }: { items: [string, React.R
 
 export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: readonly T[]; value: T; onChange: (t: T) => void }) {
   return (
-    <div role="tablist" className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200 md:flex-wrap md:overflow-visible">
+    <div role="tablist" className="mb-3 flex gap-1 overflow-x-auto border-b border-slate-200 md:flex-wrap md:overflow-visible">
       {tabs.map((t) => (
         <button
           key={t}
@@ -283,7 +284,7 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: readon
           aria-selected={value === t}
           onClick={() => onChange(t)}
           className={cn(
-            "-mb-px border-b-2 px-4 py-2 text-sm font-medium whitespace-nowrap focus-visible:outline-2 focus-visible:outline-brand-500",
+            "-mb-px border-b-2 px-3 py-2 text-sm font-medium whitespace-nowrap focus-visible:outline-2 focus-visible:outline-brand-500",
             value === t ? "border-brand-600 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-800",
           )}
         >
@@ -294,12 +295,166 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: readon
   );
 }
 
-export function Kpi({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
+const KPI_TONES = {
+  blue: "bg-brand-50 text-brand-600",
+  indigo: "bg-indigo-50 text-indigo-600",
+  sky: "bg-sky-50 text-sky-600",
+  violet: "bg-violet-50 text-violet-600",
+  amber: "bg-amber-50 text-amber-600",
+  green: "bg-emerald-50 text-emerald-600",
+  red: "bg-red-50 text-red-600",
+  slate: "bg-slate-100 text-slate-600",
+};
+
+/**
+ * Stat card: tinted icon, figure and label. With `href` the whole card links through;
+ * with `onClick` it is a toggle button (`active` marks the selected card).
+ */
+export function Kpi({
+  icon: Icon,
+  tone = "blue",
+  value,
+  label,
+  hint,
+  href,
+  onClick,
+  active,
+}: {
+  icon: LucideIcon;
+  tone?: keyof typeof KPI_TONES;
+  value: React.ReactNode;
+  label: string;
+  hint?: string;
+  href?: string;
+  onClick?: () => void;
+  active?: boolean;
+}) {
+  const body = (
+    <>
+      <span className={cn("grid size-10 shrink-0 place-items-center rounded-full", KPI_TONES[tone])}>
+        <Icon size={18} aria-hidden />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-xl leading-tight font-semibold text-slate-900 tabular-nums">{value}</span>
+        <span className="block text-xs leading-snug text-slate-500">{label}</span>
+        {hint && <span className="block text-[11px] leading-snug text-slate-400">{hint}</span>}
+      </span>
+    </>
+  );
+  const cls = "flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xs";
+  const interactive = "transition-colors hover:border-brand-200 hover:bg-brand-50/40 focus-visible:outline-2 focus-visible:outline-brand-500";
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} aria-pressed={!!active} className={cn(cls, interactive, "text-left", active && "border-brand-500 bg-brand-50 ring-1 ring-brand-500 hover:border-brand-500")}>
+        {body}
+      </button>
+    );
+  }
+  return href ? (
+    <Link href={href} className={cn(cls, "transition-colors hover:border-brand-200 hover:bg-brand-50/40 focus-visible:outline-2 focus-visible:outline-brand-500")}>
+      {body}
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
+  );
+}
+
+const KPI_COLS = {
+  3: "grid-cols-2 lg:grid-cols-3",
+  4: "grid-cols-2 lg:grid-cols-4",
+  5: "grid-cols-2 sm:grid-cols-3 xl:grid-cols-5",
+  6: "grid-cols-2 sm:grid-cols-3 xl:grid-cols-6",
+};
+
+export function KpiGrid({ cols = 3, children }: { cols?: keyof typeof KPI_COLS; children: React.ReactNode }) {
+  return <div className={cn("mb-3 grid gap-3", KPI_COLS[cols])}>{children}</div>;
+}
+
+/** A KPI card that filters the page's list. Without `test` the card means "everything" and clears the filter. */
+export type KpiDef<T> = Omit<React.ComponentProps<typeof Kpi>, "href" | "onClick" | "active" | "value"> & {
+  id: string;
+  test?: (row: T) => boolean;
+  /** Shown instead of the row count, e.g. a total value */
+  value?: React.ReactNode;
+};
+
+/** KPI cards that filter the list on the same page instead of linking elsewhere */
+export function KpiFilters<T>({
+  rows,
+  kpis,
+  active,
+  onChange,
+  cols,
+}: {
+  rows: T[];
+  kpis: KpiDef<T>[];
+  active: string | null;
+  onChange: (id: string | null) => void;
+  cols?: keyof typeof KPI_COLS;
+}) {
   return (
-    <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
-      <div className="text-xs font-medium text-slate-500">{label}</div>
-      <div className="mt-1 truncate text-2xl font-semibold text-slate-900 tabular-nums">{value}</div>
-      {hint && <div className="text-xs text-slate-500">{hint}</div>}
+    <KpiGrid cols={cols}>
+      {kpis.map(({ id, test, value, ...card }) => (
+        <Kpi
+          key={id}
+          {...card}
+          value={value ?? (test ? rows.filter(test).length : rows.length)}
+          active={!!test && active === id}
+          onClick={() => onChange(!test || active === id ? null : id)}
+        />
+      ))}
+    </KpiGrid>
+  );
+}
+
+/** The selected KPI card's test (everything passes when none is selected) */
+export const kpiTest = <T,>(kpis: KpiDef<T>[], active: string | null): ((row: T) => boolean) => kpis.find((k) => k.id === active)?.test ?? (() => true);
+
+/** Row of list filters: a search box, dropdowns and a reset button */
+export function FilterBar({ children }: { children: React.ReactNode }) {
+  return (
+    <div role="search" className="mb-3 flex flex-wrap gap-2">
+      {children}
+    </div>
+  );
+}
+
+export function SearchField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <div className="relative min-w-56 flex-[2_1_16rem]">
+      <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-slate-400" aria-hidden />
+      <Input placeholder={placeholder ?? `${label}…`} aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} className="h-10 pl-9" />
+    </div>
+  );
+}
+
+export function FilterSelect({ label, className, ...props }: React.SelectHTMLAttributes<HTMLSelectElement> & { label: string }) {
+  return <Select aria-label={label} className={cn("h-10 flex-[1_1_9rem]", className)} {...props} />;
+}
+
+export function ResetFilters({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
+  return (
+    <Button variant="secondary" onClick={onClick} aria-label="Reset filters" title="Reset filters" className="h-10 w-10 px-0" disabled={disabled}>
+      <RefreshCw size={16} aria-hidden />
+    </Button>
+  );
+}
+
+/** Empty state for a filtered list, with a way back to everything */
+export function NoResults({ filtered, onClear, children }: { filtered: boolean; onClear: () => void; children: React.ReactNode }) {
+  return (
+    <div className="p-3">
+      <Empty
+        action={
+          filtered && (
+            <button className={cn(linkCls, "text-sm")} onClick={onClear}>
+              Clear filters
+            </button>
+          )
+        }
+      >
+        {filtered ? "Nothing matches these filters." : children}
+      </Empty>
     </div>
   );
 }
@@ -307,7 +462,7 @@ export function Kpi({ label, value, hint }: { label: string; value: React.ReactN
 /** Amber "fog" message used for soft warnings that keep the user on the screen */
 export function Fog({ children, onClose }: { children: React.ReactNode; onClose?: () => void }) {
   return (
-    <div role="alert" className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+    <div role="alert" className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
       <div className="flex-1">{children}</div>
       {onClose && (
         <button onClick={onClose} className="rounded p-0.5 text-amber-700 hover:text-amber-900" aria-label="Dismiss">
@@ -379,7 +534,7 @@ export function RowMenu({ label, items }: { label: string; items: MenuItem[] }) 
         aria-label={label}
         className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-brand-500"
       >
-        <MoreVertical size={16} aria-hidden />
+        <MoreHorizontal size={16} aria-hidden />
       </button>
       {pos && (
         <div ref={menuRef} role="menu" style={pos} className="fixed z-40 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
