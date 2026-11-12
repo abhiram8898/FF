@@ -1401,7 +1401,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       {children}
       <div className="pointer-events-none fixed inset-x-4 bottom-4 z-50 flex flex-col items-end gap-2" role="status" aria-live="polite">
         {toasts.map((t) => (
-          <div key={t.id} className="toast-in max-w-sm rounded-lg bg-slate-900 px-3 py-2.5 text-sm text-white shadow-lg">
+          <div key={t.id} className="toast-in max-w-sm rounded-lg bg-navy-900 px-3 py-2.5 text-sm text-white shadow-lg">
             {t.message}
           </div>
         ))}

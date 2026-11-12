@@ -46,7 +46,7 @@ export const buttonCls = (variant: Variant, size: Size, className?: string) =>
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500",
     "disabled:cursor-not-allowed disabled:opacity-50",
     size === "sm" ? "h-7 px-2.5 text-xs" : "h-9 px-3 text-sm sm:h-8",
-    variant === "primary" && "bg-navy-900 text-white shadow-sm hover:bg-navy-700",
+    variant === "primary" && "bg-navy-900 text-white shadow-sm hover:bg-navy-700 dark:bg-brand-500 dark:hover:bg-brand-400",
     variant === "secondary" && "bg-white text-slate-700 shadow-xs ring-1 ring-slate-300 ring-inset hover:bg-slate-50",
     variant === "ghost" && "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
     variant === "danger" && "bg-white text-red-600 ring-1 ring-red-200 ring-inset hover:bg-red-50",
@@ -298,7 +298,7 @@ export function Modal({
 
   if (!open) return null;
   return (
-    <div className="modal-overlay fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-3 sm:p-3" onMouseDown={requestClose}>
+    <div className="modal-overlay fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-navy-900/55 p-3 sm:p-3" onMouseDown={requestClose}>
       <div
         ref={dialogRef}
         tabIndex={-1}
@@ -480,7 +480,7 @@ export function Toggle({ checked, onChange, label, disabled }: { checked: boolea
         checked ? "bg-brand-600" : "bg-slate-300",
       )}
     >
-      <span className={cn("inline-block size-4 rounded-full bg-white shadow transition-transform", checked ? "translate-x-4.5" : "translate-x-0.5")} />
+      <span className={cn("inline-block size-4 rounded-full bg-[#fff] shadow transition-transform", checked ? "translate-x-4.5" : "translate-x-0.5")} />
     </button>
   );
 }
@@ -788,12 +788,12 @@ export function RowActions({ label, items }: { label: string; items: RowAction[]
           role="tooltip"
           style={{ left: tip.x, top: tip.y }}
           className={cn(
-            "tooltip-in pointer-events-none fixed z-50 -translate-x-1/2 rounded-md bg-slate-900 px-2 py-1 text-xs font-medium whitespace-nowrap text-white shadow-lg",
+            "tooltip-in pointer-events-none fixed z-50 -translate-x-1/2 rounded-md bg-navy-900 px-2 py-1 text-xs font-medium whitespace-nowrap text-white shadow-lg",
             !tip.below && "-translate-y-full",
           )}
         >
           {tip.text}
-          <span className={cn("absolute left-1/2 size-2 -translate-x-1/2 rotate-45 bg-slate-900", tip.below ? "-top-1" : "-bottom-1")} aria-hidden />
+          <span className={cn("absolute left-1/2 size-2 -translate-x-1/2 rotate-45 bg-navy-900", tip.below ? "-top-1" : "-bottom-1")} aria-hidden />
         </span>
       )}
     </div>

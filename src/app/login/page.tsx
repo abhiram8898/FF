@@ -17,11 +17,11 @@ const FEATURES = [
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen bg-white">
+    <div className="light-scope flex min-h-screen bg-white">
       <Hero />
-      <main className="relative flex min-w-0 flex-1 flex-col px-5 py-8 sm:px-10">
+      <main className="relative flex min-w-0 flex-1 flex-col bg-linear-to-br from-slate-50 via-white to-brand-50/60 px-5 py-8 sm:px-10">
         {/* Soft tint behind the form on small screens, where the hero is hidden */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-brand-50/70 to-transparent lg:hidden" aria-hidden />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-linear-to-b from-brand-50/70 to-transparent lg:hidden" aria-hidden />
         <div className="relative flex min-w-0 flex-1 items-center justify-center">
           <Suspense>
             <LoginForm />
@@ -58,7 +58,7 @@ function Hero() {
           <h1 className="login-rise mt-5 text-4xl leading-[1.1] font-semibold tracking-tight [animation-delay:120ms] xl:text-[3.25rem]">
             Every shipment,
             <br />
-            one clear <span className="bg-gradient-to-r from-gold-300 to-gold-500 bg-clip-text text-transparent">workflow.</span>
+            one clear <span className="bg-linear-to-r from-gold-300 to-gold-500 bg-clip-text text-transparent">workflow.</span>
           </h1>
           <p className="login-rise mt-4 max-w-md text-base leading-relaxed text-brand-100/90 [animation-delay:180ms]">
             Enquiries, quotations, bookings, airway bills and billing, from the first rate request to the final invoice.
@@ -100,7 +100,7 @@ function ShipmentPreview() {
         </div>
         <div className="relative h-8 flex-1 [container-type:inline-size]">
           <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-white/25" />
-          <div className="absolute top-1/2 left-0 h-px w-full origin-left bg-gradient-to-r from-brand-400 to-gold-400 [animation:route-fill_3.2s_cubic-bezier(0.65,0,0.35,1)_infinite]" />
+          <div className="absolute top-1/2 left-0 h-px w-full origin-left bg-linear-to-r from-brand-400 to-gold-400 [animation:route-fill_3.2s_cubic-bezier(0.65,0,0.35,1)_infinite]" />
           <span className="absolute top-1/2 left-0 grid size-7 -translate-y-1/2 place-items-center rounded-full bg-white text-navy-800 shadow-lg [animation:route-fly_3.2s_cubic-bezier(0.65,0,0.35,1)_infinite]">
             <Plane size={14} className="rotate-45" />
           </span>
@@ -176,126 +176,128 @@ function LoginForm() {
     );
 
   return (
-    <div className="w-full max-w-sm min-w-0">
+    <div className="w-full max-w-md min-w-0">
       <Image src="/brand/logo.png" alt="FreightTask" width={1394} height={345} priority className="login-rise mb-8 h-10 w-auto lg:hidden" />
+      {/* Card with an animated gradient border (see .gradient-border in globals.css) */}
+      <div className="gradient-border login-card rounded-2xl p-6 shadow-xl shadow-navy-900/[0.07] sm:p-8">
+        <h2 className="login-rise text-3xl font-semibold tracking-tight text-slate-900 [animation-delay:60ms]">Welcome back</h2>
+        <p className="login-rise mt-2 text-sm text-slate-500 [animation-delay:100ms]">Sign in to your FreightTask account to continue.</p>
 
-      <h2 className="login-rise text-3xl font-semibold tracking-tight text-slate-900 [animation-delay:60ms]">Welcome back</h2>
-      <p className="login-rise mt-2 text-sm text-slate-500 [animation-delay:100ms]">Sign in to your FreightTask account to continue.</p>
+        <form onSubmit={submit} noValidate className="login-rise mt-8 space-y-4 [animation-delay:140ms]">
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">Email address</span>
+            <span className="relative block">
+              <Mail size={17} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-slate-400" aria-hidden />
+              <input
+                type="email"
+                autoComplete="username"
+                placeholder="you@company.com"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setError("");
+                }}
+                aria-invalid={!!error}
+                className={inputCls(!!error)}
+              />
+            </span>
+          </label>
 
-      <form onSubmit={submit} noValidate className="login-rise mt-8 space-y-4 [animation-delay:140ms]">
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-slate-700">Email address</span>
-          <span className="relative block">
-            <Mail size={17} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-slate-400" aria-hidden />
-            <input
-              type="email"
-              autoComplete="username"
-              placeholder="you@company.com"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                setError("");
-              }}
-              aria-invalid={!!error}
-              className={inputCls(!!error)}
-            />
-          </span>
-        </label>
+          <label className="block">
+            <span className="mb-1.5 flex items-center justify-between text-sm font-medium text-slate-700">
+              Password
+              <button
+                type="button"
+                onClick={() => setNotice("Password resets aren't available in the demo. Use the demo account below.")}
+                className="rounded-sm text-sm font-medium text-brand-600 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-brand-500"
+              >
+                Forgot password?
+              </button>
+            </span>
+            <span className="relative block">
+              <Lock size={17} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-slate-400" aria-hidden />
+              <input
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError("");
+                }}
+                aria-invalid={!!error}
+                className={cn(inputCls(!!error), "pr-11")}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((s) => !s)}
+                className="absolute top-1/2 right-2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-brand-500"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+              </button>
+            </span>
+          </label>
 
-        <label className="block">
-          <span className="mb-1.5 flex items-center justify-between text-sm font-medium text-slate-700">
-            Password
-            <button
-              type="button"
-              onClick={() => setNotice("Password resets aren't available in the demo. Use the demo account below.")}
-              className="rounded-sm text-sm font-medium text-brand-600 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-brand-500"
-            >
-              Forgot password?
-            </button>
-          </span>
-          <span className="relative block">
-            <Lock size={17} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-slate-400" aria-hidden />
-            <input
-              type={showPassword ? "text" : "password"}
-              autoComplete="current-password"
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                setError("");
-              }}
-              aria-invalid={!!error}
-              className={cn(inputCls(!!error), "pr-11")}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((s) => !s)}
-              className="absolute top-1/2 right-2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-brand-500"
-              aria-label={showPassword ? "Hide password" : "Show password"}
-            >
-              {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
-            </button>
-          </span>
-        </label>
-
-        {error && (
-          <p key={errorKey} role="alert" className="login-shake flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
-            <AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
-            {error}
-          </p>
-        )}
-        {notice && (
-          <p role="status" className="rounded-xl bg-brand-50 px-3 py-2.5 text-sm text-brand-800">
-            {notice}
-          </p>
-        )}
-
-        <label className="flex w-fit items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="size-4 rounded accent-brand-600" />
-          Keep me signed in
-        </label>
-
-        <button
-          type="submit"
-          disabled={signingIn}
-          className="group flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-navy-800 to-brand-700 text-sm font-semibold text-white shadow-lg shadow-brand-700/25 transition-all hover:shadow-xl hover:shadow-brand-700/30 hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 active:scale-[0.99] disabled:cursor-wait disabled:brightness-100"
-        >
-          {signingIn ? (
-            <>
-              <Spinner size="xs" tone="light" /> Signing in…
-            </>
-          ) : (
-            <>
-              Sign in <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" aria-hidden />
-            </>
+          {error && (
+            <p key={errorKey} role="alert" className="login-shake flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+              <AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
+              {error}
+            </p>
           )}
-        </button>
-      </form>
+          {notice && (
+            <p role="status" className="rounded-xl bg-brand-50 px-3 py-2.5 text-sm text-brand-800">
+              {notice}
+            </p>
+          )}
 
-      <div className="login-rise mt-6 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 [animation-delay:200ms]">
-        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-gold-50 text-gold-600 ring-1 ring-gold-200">
-          <KeyRound size={17} aria-hidden />
-        </span>
-        <div className="min-w-0 flex-1 text-xs">
-          <div className="font-semibold text-slate-800">Demo account</div>
-          <div className="truncate font-mono text-slate-500">{DEMO_CREDENTIALS.email}</div>
-          <div className="font-mono text-slate-500">{DEMO_CREDENTIALS.password}</div>
+          <label className="flex w-fit items-center gap-2 text-sm text-slate-600">
+            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="size-4 rounded accent-brand-600" />
+            Keep me signed in
+          </label>
+
+          <button
+            type="submit"
+            disabled={signingIn}
+            className="group flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-navy-800 to-brand-700 text-sm font-semibold text-white shadow-lg shadow-brand-700/25 transition-all hover:shadow-xl hover:shadow-brand-700/30 hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 active:scale-[0.99] disabled:cursor-wait disabled:brightness-100"
+          >
+            {signingIn ? (
+              <>
+                <Spinner size="xs" tone="light" /> Signing in…
+              </>
+            ) : (
+              <>
+                Sign in <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" aria-hidden />
+              </>
+            )}
+          </button>
+        </form>
+
+        <div className="login-rise mt-6 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 [animation-delay:200ms]">
+          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-gold-50 text-gold-600 ring-1 ring-gold-200">
+            <KeyRound size={17} aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1 text-xs">
+            <div className="font-semibold text-slate-800">Demo account</div>
+            <div className="truncate font-mono text-slate-500">{DEMO_CREDENTIALS.email}</div>
+            <div className="font-mono text-slate-500">{DEMO_CREDENTIALS.password}</div>
+          </div>
+          <button
+            type="button"
+            onClick={fillDemo}
+            className="shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-brand-700 shadow-xs ring-1 ring-slate-200 ring-inset hover:bg-brand-50 hover:ring-brand-200 focus-visible:outline-2 focus-visible:outline-brand-500"
+          >
+            Fill in
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={fillDemo}
-          className="shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-brand-700 shadow-xs ring-1 ring-slate-200 ring-inset hover:bg-brand-50 hover:ring-brand-200 focus-visible:outline-2 focus-visible:outline-brand-500"
-        >
-          Fill in
-        </button>
-      </div>
 
-      <p className="login-rise mt-8 text-center text-sm text-slate-500 [animation-delay:240ms]">
-        Don&apos;t have an account?{" "}
-        <a href="mailto:support@freighttask.com" className="rounded-sm font-medium text-brand-600 hover:text-brand-800 hover:underline">
-          Contact us
-        </a>
-      </p>
+        <p className="login-rise mt-8 text-center text-sm text-slate-500 [animation-delay:240ms]">
+          Don&apos;t have an account?{" "}
+          <a href="mailto:support@freighttask.com" className="rounded-sm font-medium text-brand-600 hover:text-brand-800 hover:underline">
+            Contact us
+          </a>
+        </p>
+      </div>
     </div>
   );
 }

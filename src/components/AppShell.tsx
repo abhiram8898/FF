@@ -23,18 +23,21 @@ import {
   LogOut,
   Mail,
   Menu,
+  Monitor,
+  Moon,
   Package,
   Plane,
   Plus,
   ReceiptText,
   RotateCcw,
   Send,
-  Settings,
   SlidersHorizontal,
+  Sun,
   UsersRound,
   X,
 } from "lucide-react";
 import { useAuth, type User } from "@/lib/auth";
+import { type ThemeMode, useTheme } from "@/lib/theme";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { PageLoader, Spinner } from "./ui";
@@ -57,8 +60,17 @@ function LinkPending({ spinner }: { spinner?: boolean }) {
   if (!pending) return null;
   return (
     <>
-      <span className="link-pending pointer-events-none absolute inset-0 rounded-[inherit]" aria-hidden />
-      {spinner && <Spinner size="xs" tone="light" className="absolute top-1/2 right-2.5 -translate-y-1/2" />}
+      <span
+        className="link-pending pointer-events-none absolute inset-0 rounded-[inherit]"
+        aria-hidden
+      />
+      {spinner && (
+        <Spinner
+          size="xs"
+          tone="light"
+          className="absolute top-1/2 right-2.5 -translate-y-1/2"
+        />
+      )}
     </>
   );
 }
@@ -313,7 +325,7 @@ function Shell({ user, children }: { user: User; children: React.ReactNode }) {
       </a>
 
       {/* Desktop sidebar: full height, logo on white above the navigation */}
-      <aside className="no-print sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-white/10 bg-navy-900 xl:flex">
+      <aside className="brand-scope no-print sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-white/10 bg-navy-900 xl:flex">
         <Link
           href="/"
           className="flex h-14 shrink-0 items-center border-b border-white/10 px-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-white"
@@ -339,10 +351,10 @@ function Shell({ user, children }: { user: User; children: React.ReactNode }) {
           aria-label="Menu"
         >
           <div
-            className="absolute inset-0 bg-slate-900/50"
+            className="absolute inset-0 bg-navy-900/55"
             onClick={() => setMenuOpen(false)}
           />
-          <aside className="relative flex h-full w-72 max-w-[85%] flex-col bg-navy-900">
+          <aside className="brand-scope relative flex h-full w-72 max-w-[85%] flex-col bg-navy-900">
             <div className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 px-3">
               <Image
                 src="/brand/logo-light.png"
@@ -390,7 +402,7 @@ function Shell({ user, children }: { user: User; children: React.ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="no-print sticky top-0 z-30 flex h-14 items-stretch gap-2 bg-navy-900 pr-2 pl-3 shadow-sm sm:pr-3 xl:pl-0">
+        <header className="brand-scope no-print sticky top-0 z-30 flex h-14 items-stretch gap-2 bg-navy-900 pr-2 pl-3 shadow-sm sm:pr-3 xl:pl-0">
           <Link
             href="/"
             className="flex shrink-0 items-center rounded-sm focus-visible:outline-2 focus-visible:outline-white xl:hidden"
@@ -437,19 +449,7 @@ function Shell({ user, children }: { user: User; children: React.ReactNode }) {
             >
               <Bell size={18} aria-hidden />
             </Link>
-            <Link
-              href="/mailbox"
-              className={cn(iconBtn, "hidden sm:block")}
-              aria-label={unread ? `Mail Box, ${unread} unread` : "Mail Box"}
-            >
-              <Inbox size={18} aria-hidden />
-              {!!unread && (
-                <span
-                  className="absolute top-1.5 right-1.5 size-2 rounded-full bg-gold-500 ring-2 ring-navy-900"
-                  aria-hidden
-                />
-              )}
-            </Link>
+
             <UserMenu user={user} />
             <button
               onClick={() => setMenuOpen(true)}
@@ -486,19 +486,64 @@ function Shell({ user, children }: { user: User; children: React.ReactNode }) {
   );
 }
 
+const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: LucideIcon }[] = [
+  { mode: "light", label: "Light", icon: Sun },
+  { mode: "dark", label: "Dark", icon: Moon },
+  { mode: "system", label: "System", icon: Monitor },
+];
+
+/** Initials on the brand gradient, with a thin light ring */
+function Avatar({ initials, size }: { initials: string; size: "sm" | "lg" }) {
+  return (
+    <span
+      className={cn(
+        "grid shrink-0 place-items-center rounded-full bg-linear-to-br from-brand-500 via-brand-600 to-navy-700 font-semibold text-white ring-2",
+        size === "sm"
+          ? "size-8 text-xs ring-white/80"
+          : "size-11 text-sm ring-white shadow-md shadow-brand-900/20",
+      )}
+      aria-hidden
+    >
+      {initials}
+    </span>
+  );
+}
+
 function UserMenu({ user }: { user: User }) {
   const { logout } = useAuth();
+  const theme = useTheme();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setOpen(false), [pathname]);
 
   useEffect(() => {
     if (!open) return;
+    // Focus the first item, like a native menu
+    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     const onDown = (e: MouseEvent) =>
       !ref.current?.contains(e.target as Node) && setOpen(false);
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        buttonRef.current?.focus();
+      }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const items = [
+          ...(menuRef.current?.querySelectorAll<HTMLElement>(
+            '[role="menuitem"]',
+          ) ?? []),
+        ];
+        const i = items.indexOf(document.activeElement as HTMLElement);
+        items[
+          (i + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length
+        ]?.focus();
+      }
+    };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
@@ -507,50 +552,147 @@ function UserMenu({ user }: { user: User }) {
     };
   }, [open]);
 
-  const itemCls =
-    "flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 focus:bg-slate-100 focus:outline-none";
-
   return (
     <div ref={ref} className="relative">
       <button
+        ref={buttonRef}
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex items-center gap-2 rounded-lg py-1 pr-1.5 pl-1 text-left hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white"
+        className={cn(
+          "flex items-center gap-2.5 rounded-xl py-1 pr-2 pl-1 text-left transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white",
+          open && "bg-white/10",
+        )}
       >
-        <span
-          className="grid size-8 place-items-center rounded-full bg-white text-xs font-semibold text-navy-800"
-          aria-hidden
-        >
-          {user.initials}
-        </span>
-        <span className="hidden text-sm font-medium whitespace-nowrap text-white xl:block">
-          {user.name}
-        </span>
+        <Avatar initials={user.initials} size="sm" />
+       
         <ChevronDown
-          size={14}
-          className="hidden text-brand-200 sm:block"
+          size={15}
+          className={cn(
+            "hidden text-brand-200 transition-transform duration-200 sm:block",
+            open && "rotate-180",
+          )}
           aria-hidden
         />
         <span className="sr-only">Account menu for {user.name}</span>
       </button>
+
       {open && (
         <div
+          ref={menuRef}
           role="menu"
-          className="absolute right-0 mt-2 w-56 rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+          aria-label="Account"
+          className="menu-in absolute right-0 z-40 mt-2 w-80 max-w-[calc(100vw-1.5rem)] origin-top-right overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 shadow-navy-900/15 ring-slate-200"
         >
-          <div className="border-b border-slate-100 px-3 py-2 text-xs">
-            <div className="font-medium text-slate-900">{user.name}</div>
-            <div className="truncate text-slate-500">
-              {user.role} · {user.email}
+          {/* Profile */}
+          <div className="flex items-center gap-3 bg-linear-to-br from-brand-50 via-transparent to-gold-50/60 px-4 py-4">
+            <Avatar initials={user.initials} size="lg" />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold text-slate-900">
+                {user.name}
+              </div>
+              <div className="text-xs break-all text-slate-500">
+                {user.email}
+              </div>
             </div>
           </div>
-          <Link href="/settings" role="menuitem" className={itemCls}>
-            <Settings size={14} aria-hidden /> Settings
-          </Link>
-          <button role="menuitem" onClick={logout} className={itemCls}>
-            <LogOut size={14} aria-hidden /> Log out
-          </button>
+
+          <div className="border-t border-slate-100 p-1.5">
+            <Link
+              href="/settings"
+              role="menuitem"
+              aria-current={pathname === "/settings" ? "page" : undefined}
+              className={cn(
+                "group flex items-center gap-3 rounded-xl px-2.5 py-2 transition-colors outline-none hover:bg-slate-50 focus-visible:bg-slate-100",
+                pathname === "/settings" && "bg-brand-50/70 hover:bg-brand-50",
+              )}
+            >
+              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-amber-50 text-amber-600 ring-1 ring-amber-100">
+                <SlidersHorizontal size={16} aria-hidden />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span
+                  className={cn(
+                    "block text-sm font-medium",
+                    pathname === "/settings"
+                      ? "text-brand-700"
+                      : "text-slate-800",
+                  )}
+                >
+                  Settings
+                </span>
+                <span className="block truncate text-xs text-slate-500">
+                  Notifications, numbering, lists
+                </span>
+              </span>
+              <ChevronDown
+                size={14}
+                className="-rotate-90 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-slate-400"
+                aria-hidden
+              />
+            </Link>
+
+            {/* Appearance: Light / Dark / System */}
+            <div className="mt-1 flex items-center gap-3 px-2.5 py-2">
+              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
+                {theme.mode === "dark" ? (
+                  <Moon size={16} aria-hidden />
+                ) : theme.mode === "system" ? (
+                  <Monitor size={16} aria-hidden />
+                ) : (
+                  <Sun size={16} aria-hidden />
+                )}
+              </span>
+              <span
+                className="flex-1 text-sm font-medium text-slate-800"
+                id="appearance-label"
+              >
+                Appearance
+              </span>
+              <div
+                role="radiogroup"
+                aria-labelledby="appearance-label"
+                className="flex rounded-lg bg-slate-100 p-0.5"
+              >
+                {THEME_OPTIONS.map(({ mode, label, icon: Icon }) => {
+                  const on = theme.mode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      aria-label={label}
+                      title={label}
+                      onClick={() => theme.setMode(mode)}
+                      className={cn(
+                        "grid size-7 place-items-center rounded-md transition-all focus-visible:outline-2 focus-visible:outline-brand-500",
+                        on
+                          ? "bg-white text-brand-700 shadow-sm ring-1 ring-slate-200"
+                          : "text-slate-500 hover:text-slate-800",
+                      )}
+                    >
+                      <Icon size={15} aria-hidden />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Sign out */}
+          <div className="border-t border-slate-100 p-1.5">
+            <button
+              role="menuitem"
+              onClick={logout}
+              className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-medium text-red-600 transition-colors outline-none hover:bg-red-50 focus-visible:bg-red-50"
+            >
+              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-red-50 ring-1 ring-red-100">
+                <LogOut size={16} aria-hidden />
+              </span>
+              Log out
+            </button>
+          </div>
         </div>
       )}
     </div>

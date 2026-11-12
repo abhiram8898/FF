@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import { AppShell } from "@/components/AppShell";
 import { AuthProvider } from "@/lib/auth";
 import { StoreProvider } from "@/lib/store";
+import { THEME_SCRIPT, ThemeProvider } from "@/lib/theme";
 import "./globals.css";
 
 const inter = Inter({
@@ -21,13 +22,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    // The head script adds class="dark" before React loads, hence suppressHydrationWarning on <html>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body className={`${inter.variable} antialiased`}>
-        <AuthProvider>
-          <StoreProvider>
-            <AppShell>{children}</AppShell>
-          </StoreProvider>
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <StoreProvider>
+              <AppShell>{children}</AppShell>
+            </StoreProvider>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
