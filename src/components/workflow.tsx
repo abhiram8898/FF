@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useState } from "react";
-import { AlertCircle, Check, CheckCircle2, History, Plane, XCircle } from "lucide-react";
+import { AlertCircle, Check, CheckCircle2, History, Plane, Plus, Trash2, XCircle } from "lucide-react";
 import { type RateInput, useLookups, useStore } from "@/lib/store";
 import { ENQUIRY_STATUSES, type AirlineRate, type Enquiry, type EnquiryStatus, type MailDraft } from "@/lib/types";
-import { STEPS, addDays, airlinesForRoute, cn, currentStep, estimatedTotal, fmtDate, money, previousShipments, ratesForRoute, volumeCbm } from "@/lib/utils";
+import { STEPS, addDays, airlinesForRoute, cn, currentStep, estimatedTotal, fmtDate, money, previousShipments, rateForWeight, ratesForRoute, today, uid, volumeCbm } from "@/lib/utils";
 import { ComposeEmail } from "./ComposeEmail";
 import { Badge, Button, Empty, Field, Fog, Input, KeyValue, Modal, Select, StatusBadge, Table } from "./ui";
 
@@ -34,7 +34,7 @@ export function WorkflowStepper({ status }: { status: EnquiryStatus }) {
   if (active < 0) {
     return (
       <div className="flex items-center gap-2 text-sm text-red-600">
-        <XCircle size={16} /> This enquiry is marked <b>{status}</b>. Use Change Status to reopen it.
+        <XCircle size={16} /> This enquiry is {status === "On Hold" ? "on hold" : <>marked <b>{status}</b></>}. {status === "On Hold" ? "Resume it from the next action." : "Use Change Status to reopen it."}
       </div>
     );
   }
@@ -60,7 +60,7 @@ export function WorkflowStepper({ status }: { status: EnquiryStatus }) {
               <div className={cn("h-0.5 flex-1", i === STEPS.length - 1 ? "invisible" : done ? "bg-brand-500" : "bg-slate-200")} />
             </div>
             <span
-              className={cn("mt-1.5 px-1 text-[11px] leading-tight", current ? "font-semibold text-brand-700" : done ? "text-slate-700" : "text-slate-400")}
+              className={cn("mt-1.5 px-1 text-xs leading-tight", current ? "font-semibold text-brand-700" : done ? "text-slate-700" : "text-slate-400")}
             >
               {label}
             </span>
@@ -153,10 +153,41 @@ export function RouteInsights({ enquiry }: { enquiry: Pick<Enquiry, "customerId"
   );
 }
 
+/** An empty rate with sensible defaults */
+export const blankRate = (initial: Partial<RateInput> = {}): RateInput => ({
+  airlineId: "",
+  name: "Air Freight",
+  code: "AF",
+  rateType: "GEN",
+  commodity: "",
+  region: "",
+  pol: "",
+  pod: "",
+  currency: "INR",
+  ratePerKg: 0,
+  slabs: [],
+  minCharge: 0,
+  awbFee: 0,
+  otherCharges: 0,
+  transitDays: 1,
+  validFrom: today(),
+  validUntil: addDays(30),
+  remarks: "",
+  contact: "",
+  source: "Master",
+  ...initial,
+});
+
+/**
+ * Airline rate entry. The short form (Update Rate on an enquiry) has the FRD's three parts:
+ * 1 · Air Freight, 2 · Airway Bill Fees, 3 · Other charges. With `master` it adds the rate sheet
+ * fields of the Airline Rate Master: rate name and type, region, weight slabs, validity and contact.
+ */
 export function RateForm({
   initial,
   airlineIds,
   lockRoute,
+  master,
   onSubmit,
   submitLabel = "Save rate",
   useLabel,
@@ -166,6 +197,7 @@ export function RateForm({
   /** Restrict the airline dropdown to these ids */
   airlineIds?: string[];
   lockRoute?: boolean;
+  master?: boolean;
   /** `use` is true when the user picked the second button (e.g. "Add & Use Rate") */
   onSubmit: (rate: RateInput, use: boolean) => void;
   submitLabel?: string;
@@ -175,41 +207,33 @@ export function RateForm({
 }) {
   const { state } = useStore();
   const airlines = airlineIds ? state.airlines.filter((a) => airlineIds.includes(a.id)) : state.airlines;
-  const [r, setR] = useState<RateInput>({
-    airlineId: airlines[0]?.id ?? "",
-    pol: "",
-    pod: "",
-    currency: "INR",
-    ratePerKg: 0,
-    awbFee: 0,
-    minCharge: 0,
-    transitDays: 1,
-    validUntil: addDays(30),
-    source: "Master",
-    ...initial,
-  });
+  const [r, setR] = useState<RateInput>(() => blankRate({ airlineId: airlines[0]?.id ?? "", ...initial }));
   const num = (k: keyof RateInput) => (e: React.ChangeEvent<HTMLInputElement>) => setR({ ...r, [k]: Number(e.target.value) });
-  const portOptions = state.ports.map((p) => (
-    <option key={p.code} value={p.code}>
-      {p.code} – {p.name}
-    </option>
-  ));
+  const str = (k: keyof RateInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setR({ ...r, [k]: e.target.value });
+  const portOptions = state.ports
+    .filter((p) => p.status === "Active" || p.code === r.pol || p.code === r.pod)
+    .map((p) => (
+      <option key={p.code} value={p.code}>
+        {p.code} – {p.name}
+      </option>
+    ));
 
-  const invalid = !r.airlineId || !r.pol || !r.pod || r.pol === r.pod || r.ratePerKg <= 0;
+  const invalid = !r.airlineId || !r.pol || !r.pod || r.pol === r.pod || r.ratePerKg <= 0 || (!!r.validFrom && r.validUntil < r.validFrom);
   const sectionTitle = "col-span-2 mt-2 border-t border-slate-100 pt-3 text-xs font-semibold tracking-wide text-slate-500 uppercase sm:col-span-4";
+  const setSlab = (id: string, patch: Partial<RateInput["slabs"][number]>) => setR({ ...r, slabs: r.slabs.map((x) => (x.id === id ? { ...x, ...patch } : x)) });
 
   return (
     <form
-      className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+      className="grid grid-cols-1 max-xs:*:col-span-full xs:grid-cols-2 gap-3 sm:grid-cols-4"
       onSubmit={(e) => {
         e.preventDefault();
         // Both buttons submit (so required fields are checked); the second one carries value="use"
         const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
-        onSubmit(r, submitter?.value === "use");
+        onSubmit({ ...r, slabs: r.slabs.filter((x) => x.rate > 0) }, submitter?.value === "use");
       }}
     >
-      <Field label="Airline" className="col-span-2">
-        <Select value={r.airlineId} onChange={(e) => setR({ ...r, airlineId: e.target.value })} required>
+      <Field label="Airline Name" className="col-span-2">
+        <Select value={r.airlineId} onChange={str("airlineId")} required>
           {airlines.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
@@ -218,43 +242,116 @@ export function RateForm({
         </Select>
       </Field>
       <Field label="POL">
-        <Select value={r.pol} onChange={(e) => setR({ ...r, pol: e.target.value })} disabled={lockRoute} required>
+        <Select value={r.pol} onChange={str("pol")} disabled={lockRoute} required>
           <option value="">Select</option>
           {portOptions}
         </Select>
       </Field>
       <Field label="POD">
-        <Select value={r.pod} onChange={(e) => setR({ ...r, pod: e.target.value })} disabled={lockRoute} required>
+        <Select value={r.pod} onChange={str("pod")} disabled={lockRoute} required>
           <option value="">Select</option>
           {portOptions}
         </Select>
       </Field>
+      {master && (
+        <>
+          <Field label="Rate Name">
+            <Input value={r.name} onChange={str("name")} />
+          </Field>
+          <Field label="Charge Code">
+            <Input value={r.code} onChange={(e) => setR({ ...r, code: e.target.value.toUpperCase() })} />
+          </Field>
+          <Field label="Rate Type" hint="e.g. GEN, All Perishables">
+            <Input value={r.rateType} onChange={str("rateType")} list="rate-types" />
+            <datalist id="rate-types">
+              <option value="GEN" />
+              <option value="All Perishables" />
+              <option value="DG" />
+            </datalist>
+          </Field>
+          <Field label="Region">
+            <Input value={r.region} onChange={str("region")} />
+          </Field>
+          <Field label="Commodity" className="col-span-2">
+            <Input value={r.commodity} onChange={str("commodity")} placeholder="e.g. General cargo" />
+          </Field>
+        </>
+      )}
 
       <h3 className={sectionTitle}>1 · Air Freight</h3>
       <Field label="Currency">
-        <Select value={r.currency} onChange={(e) => setR({ ...r, currency: e.target.value })}>
-          {state.settings.currencies.map((c) => (
+        <Select value={r.currency} onChange={str("currency")}>
+          {state.currencies.filter((c) => c.active || c.code === r.currency).map((c) => (
             <option key={c.code}>{c.code}</option>
           ))}
         </Select>
       </Field>
-      <Field label="Air freight rate / kg *">
+      <Field label={master ? "N Rate / kg *" : "Air freight rate / kg *"}>
         <Input type="number" step="0.01" min="0" value={r.ratePerKg} onChange={num("ratePerKg")} required />
       </Field>
-      <Field label="Minimum charge">
+      <Field label="Minimum Rate">
         <Input type="number" step="0.01" min="0" value={r.minCharge} onChange={num("minCharge")} />
       </Field>
       <Field label="Transit (days)">
         <Input type="number" min="0" value={r.transitDays} onChange={num("transitDays")} />
       </Field>
-      <Field label="Valid until">
-        <Input type="date" value={r.validUntil} onChange={(e) => setR({ ...r, validUntil: e.target.value })} required />
+      {master && (
+        <div className="col-span-2 space-y-2 sm:col-span-4">
+          <div className="text-xs font-medium text-slate-700">Weight slabs (rate per kg from the given weight)</div>
+          {r.slabs.map((x) => (
+            <div key={x.id} className="flex flex-wrap items-end gap-2">
+              <Field label="Slab description" className="w-36">
+                <Input value={x.label} onChange={(e) => setSlab(x.id, { label: e.target.value })} placeholder="+45" />
+              </Field>
+              <Field label="From kg" className="w-28">
+                <Input type="number" min="0" value={x.minKg} onChange={(e) => setSlab(x.id, { minKg: Number(e.target.value) })} />
+              </Field>
+              <Field label="Slab rate" className="w-28">
+                <Input type="number" min="0" step="0.01" value={x.rate} onChange={(e) => setSlab(x.id, { rate: Number(e.target.value) })} />
+              </Field>
+              <button type="button" onClick={() => setR({ ...r, slabs: r.slabs.filter((y) => y.id !== x.id) })} className="mb-1.5 rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label={`Remove slab ${x.label}`}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              const next = [45, 100, 300, 500, 1000].find((k) => !r.slabs.some((x) => x.minKg === k)) ?? 0;
+              setR({ ...r, slabs: [...r.slabs, { id: uid(), label: next ? `+${next}` : "", minKg: next, rate: 0 }] });
+            }}
+          >
+            <Plus size={13} aria-hidden /> Add new slab
+          </Button>
+        </div>
+      )}
+      <Field label="Valid from">
+        <Input type="date" value={r.validFrom} onChange={str("validFrom")} />
+      </Field>
+      <Field label="Valid to" hint={r.validFrom && r.validUntil < r.validFrom ? <span className="text-red-600">Must be after Valid from</span> : undefined}>
+        <Input type="date" value={r.validUntil} onChange={str("validUntil")} required />
       </Field>
 
       <h3 className={sectionTitle}>2 · Airway Bill Fees</h3>
       <Field label={`Airway bill fees (${r.currency}, per shipment)`} className="col-span-2">
         <Input type="number" step="0.01" min="0" value={r.awbFee} onChange={num("awbFee")} />
       </Field>
+
+      <h3 className={sectionTitle}>3 · Other charges</h3>
+      <Field label={`Other airline charges (${r.currency}, per shipment)`} className="col-span-2">
+        <Input type="number" step="0.01" min="0" value={r.otherCharges} onChange={num("otherCharges")} />
+      </Field>
+      {master && (
+        <>
+          <Field label="Remarks" className="col-span-2">
+            <Input value={r.remarks} onChange={str("remarks")} />
+          </Field>
+          <Field label="Contact Details" className="col-span-2">
+            <Input value={r.contact} onChange={str("contact")} />
+          </Field>
+        </>
+      )}
       {extra && <div className="col-span-2 flex items-end">{extra}</div>}
 
       <div className="col-span-2 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3 sm:col-span-4">
@@ -271,25 +368,25 @@ export function RateForm({
   );
 }
 
-/** "Add Rate Manually": a rate found elsewhere (open source, phone call) used for one enquiry */
+/** "Update Rate": a rate received from the airline (or found elsewhere), entered by hand for one enquiry */
 export function ManualRateModal({ enq, onClose }: { enq: Enquiry; onClose: () => void }) {
   const router = useRouter();
   const { actions } = useStore();
   const [saveToMaster, setSaveToMaster] = useState(false);
   return (
-    <Modal open onClose={onClose} title={`Add Rate Manually · ${enq.ref}`} wide>
+    <Modal open onClose={onClose} title={`Update Rate · ${enq.ref}`} wide>
       <p className="mb-3 text-sm text-slate-600">
-        Enter a rate you already have, for example from an airline&apos;s open rate sheet. It is added to this enquiry like an airline reply and can be used for the quotation.
+        Enter the rate received from the airline: air freight, airway bill fees and other charges. It is added to this enquiry and can be used for the quotation.
       </p>
       <RateForm
         initial={{ pol: enq.pol, pod: enq.pod, source: "Manual", enquiryId: enq.id, ...(enq.airlineIds[0] ? { airlineId: enq.airlineIds[0] } : {}) }}
         lockRoute
-        submitLabel="Add Rate"
-        useLabel="Add & Use Rate"
+        submitLabel="Update Rate"
+        useLabel="Update & Use Rate"
         extra={
           <label className="flex items-center gap-2 pb-2 text-sm">
             <input type="checkbox" checked={saveToMaster} onChange={(e) => setSaveToMaster(e.target.checked)} className="accent-brand-600" />
-            Also save to Rate Management (masters)
+            Also save to the Airline Rate Master
           </label>
         }
         onSubmit={(rate, use) => {
@@ -327,7 +424,7 @@ export function GetRatesModal({ enq, onClose, onForward, onManual }: { enq: Enqu
     <Modal
       open
       onClose={onClose}
-      title="Compare Available Rates"
+      title="Compare Available Rate"
       wide
       footer={
         <div className="flex w-full flex-wrap items-center justify-between gap-2">
@@ -336,7 +433,7 @@ export function GetRatesModal({ enq, onClose, onForward, onManual }: { enq: Enqu
               Close
             </Button>
             <Button variant="ghost" onClick={onManual} disabled={quotationLocked}>
-              Add Rate Manually
+              Update Rate
             </Button>
           </div>
           {rates.length > 0 && (
@@ -416,7 +513,9 @@ export function GetRatesModal({ enq, onClose, onForward, onManual }: { enq: Enqu
                       {total === best && <Badge className="ml-1 bg-emerald-100 text-emerald-700 ring-emerald-200">Best</Badge>}
                     </td>
                     <td>{r.currency}</td>
-                    <td className="text-right tabular-nums">{r.ratePerKg.toFixed(2)}</td>
+                    <td className="text-right tabular-nums" title={r.slabs.length ? `N ${r.ratePerKg} · ${r.slabs.map((x) => `${x.label} ${x.rate}`).join(" · ")}` : undefined}>
+                      {rateForWeight(r, enq.chargeableWeight).toFixed(2)}
+                    </td>
                     <td className="text-right tabular-nums">{r.awbFee.toFixed(2)}</td>
                     <td className="text-right tabular-nums">{r.minCharge.toFixed(2)}</td>
                     <td className="whitespace-nowrap">
@@ -437,19 +536,19 @@ export function GetRatesModal({ enq, onClose, onForward, onManual }: { enq: Enqu
             </tbody>
           </Table>
           <p className="mt-2 text-xs text-slate-500">
-            *Indicative total = higher of (chargeable weight × rate/kg) or minimum charge, plus AWB fee. Other charges and taxes may apply.
+            *Indicative total = higher of (chargeable weight × slab rate/kg) or minimum rate, plus AWB fee and other airline charges. Agency charges and taxes are added on the quotation.
           </p>
         </>
       ) : (
         <Fog>
-          <div className="font-medium">No rates updated in the masters for this POL & POD.</div>
-          <div className="mt-1">Request a rate from airlines by email, or add a rate you already have.</div>
+          <div className="font-medium">There is no Rates updated in the masters, please check with the respective airlines.</div>
+          <div className="mt-1">Send a rate request by email, or use Update Rate when the rate comes in.</div>
           <div className="mt-2 flex flex-wrap gap-2">
             <Button size="sm" onClick={onForward}>
-              Get Rate from Airline
+              Send Rate Request
             </Button>
             <Button size="sm" variant="secondary" onClick={onManual}>
-              Add Rate Manually
+              Update Rate
             </Button>
           </div>
         </Fog>
@@ -463,26 +562,22 @@ function rateRequestMail(enq: Enquiry, airlineName: string, customerName: string
     cc: "",
     bcc: "",
     subject: `${reminder ? "Reminder: " : ""}Request for Air Freight Rate – ${polLabel} to ${podLabel} [${enq.ref}]`,
+    // Kept simple, as in the FRD sample: POL, POD, commodity, gross weight, pieces, dimensions
     body: [
-      `Dear ${airlineName} Cargo Sales Team,`,
+      `Dear ${airlineName || "Sir / Madam"},`,
       "",
-      reminder
-        ? "This is a gentle reminder on our rate request below. We would appreciate your rates at the earliest."
-        : "Please provide your best air freight rate for the shipment below.",
+      reminder ? "Gentle reminder on our rate request below. We would appreciate your rate at the earliest." : "Please quote your best air freight rate for the shipment below.",
       "",
-      `Enquiry Reference: ${enq.ref}`,
-      `Customer: ${customerName}`,
-      `Shipment Type: ${enq.shipmentMode}`,
-      `Mode: ${enq.cargoMode}`,
-      `POL: ${polLabel}`,
-      `POD: ${podLabel}`,
-      `Commodity: ${enq.commodity} (${enq.productType})`,
-      `Packages: ${enq.packages} ${enq.packageType}`,
-      `Gross Weight: ${enq.grossWeight} kg · Chargeable Weight: ${enq.chargeableWeight} kg`,
-      `Dimensions: ${enq.length} × ${enq.width} × ${enq.height} cm · Volume: ${volumeCbm(enq)} CBM`,
-      `Requested Date: ${enq.requestedDate ? fmtDate(enq.requestedDate) : "To be confirmed"}`,
+      `POL        : ${polLabel}`,
+      `POD        : ${podLabel}`,
+      `COMMODITY  : ${enq.commodity}${enq.productType !== "Non-Perishable" ? ` (${enq.productType})` : ""}`,
+      `G.WEIGHT   : ${enq.grossWeight} kgs`,
+      `PCS        : ${enq.packages} ${enq.unitType}`,
+      `DIMENSION  : ${enq.length}x${enq.width}x${enq.height} cm${enq.packages > 1 ? ` x ${enq.packages}` : ""} (${volumeCbm(enq)} CBM)`,
+      ...(enq.route === "Connection" && enq.connections.length ? [`ROUTING    : via ${enq.connections.map((c) => c.transit).join(", ")}`] : []),
+      `READY DATE : ${enq.requestedDate ? fmtDate(enq.requestedDate) : "To be confirmed"}`,
       "",
-      "Kindly quote the rate per kg, AWB fee, minimum charge, transit time and validity.",
+      `Ref: ${enq.ref} · ${customerName}`,
     ].join("\n"),
   };
 }
@@ -533,22 +628,37 @@ function PerAirlineMail({
 }
 
 /** FRD VI–VIII: "Get Rate from Airline" → Select Airlines → one Rate Request email per airline */
-export function ForwardFlow({ enq, onClose }: { enq: Enquiry; onClose: () => void }) {
-  const { state } = useStore();
-  const routeAirlines = airlinesForRoute(state.airlines, enq.pol, enq.pod);
-  const airlines = routeAirlines.length ? routeAirlines : state.airlines;
+export function ForwardFlow({ enq, direct, onClose }: { enq: Enquiry; /** Skip the airline selection and mail the enquiry's preferred airlines */ direct?: boolean; onClose: () => void }) {
+  const { state, actions } = useStore();
+  const { customer, portLabel } = useLookups();
+  // Only the airlines mapped (in the Airline Master) to both airports of this route
+  const airlines = airlinesForRoute(state.airlines, enq.pol, enq.pod);
   const alreadySent = enq.rateRequests.map((r) => r.airlineId);
-  const [selected, setSelected] = useState<string[]>(enq.airlineIds.filter((id) => !alreadySent.includes(id)));
-  const [step, setStep] = useState<"select" | "compose">("select");
+  const [selected, setSelected] = useState<string[]>(enq.airlineIds.filter((id) => !alreadySent.includes(id) && airlines.some((a) => a.id === id)));
+  const [step, setStep] = useState<"select" | "compose" | "anyway">(direct && selected.length ? "compose" : "select");
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   if (step === "compose") return <PerAirlineMail enq={enq} airlineIds={selected} onClose={onClose} />;
+  // "No airlines found, send the request anyway": an empty To and CC for the user to fill in
+  if (step === "anyway") {
+    return (
+      <ComposeEmail
+        title="Rate Request"
+        initial={{ to: [], ...rateRequestMail(enq, "", customer(enq.customerId)?.name ?? "", portLabel(enq.pol), portLabel(enq.pod)) }}
+        onClose={onClose}
+        onSend={(mail) => {
+          actions.sendRateRequest(enq.id, undefined, mail);
+          onClose();
+        }}
+      />
+    );
+  }
 
   return (
     <Modal
       open
       onClose={onClose}
-      title="Get Rate from Airline · Select Airlines"
+      title="Select Airlines to Request Rates"
       wide
       footer={
         <div className="flex w-full justify-between">
@@ -566,7 +676,7 @@ export function ForwardFlow({ enq, onClose }: { enq: Enquiry; onClose: () => voi
           ? `${selected.length} airline${selected.length > 1 ? "s" : ""} selected. Each gets an individual email.`
           : "No airline selected. Choose the airline(s) to receive this enquiry."}
       </p>
-      <h3 className="mb-2 text-xs font-semibold text-slate-500 uppercase">Airlines {routeAirlines.length ? `serving ${enq.pol} → ${enq.pod}` : ""}</h3>
+      <h3 className="mb-2 text-xs font-semibold text-slate-500 uppercase">Airlines serving {enq.pol} → {enq.pod}</h3>
       {airlines.length ? (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {airlines.map((a) => (
@@ -580,7 +690,20 @@ export function ForwardFlow({ enq, onClose }: { enq: Enquiry; onClose: () => voi
           ))}
         </div>
       ) : (
-        <Empty>No airlines in the master.</Empty>
+        <Empty
+          action={
+            <button className="text-sm font-medium text-brand-700 hover:underline" onClick={() => setStep("anyway")}>
+              No airlines found, send the request anyway
+            </button>
+          }
+        >
+          No airline in the Airline Master is mapped to {enq.pol} and {enq.pod}.
+        </Empty>
+      )}
+      {airlines.length > 0 && (
+        <button className="mt-3 text-xs font-medium text-brand-700 hover:underline" onClick={() => setStep("anyway")}>
+          Send to an airline that isn&apos;t listed
+        </button>
       )}
     </Modal>
   );

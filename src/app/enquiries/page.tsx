@@ -8,7 +8,6 @@ import { useLookups, useStore } from "@/lib/store";
 import { ENQUIRY_STATUSES, type Enquiry, type EnquiryStatus } from "@/lib/types";
 import {
   CONVERTED_STATUSES,
-  CUSTOMER_TYPE_TONE,
   DATE_RANGES,
   type DateRange,
   STAGES,
@@ -23,7 +22,6 @@ import {
   matches,
 } from "@/lib/utils";
 import {
-  Badge,
   Button,
   Card,
   FilterBar,
@@ -35,17 +33,18 @@ import {
   NoResults,
   PageHeader,
   ResetFilters,
-  RowMenu,
+  RowActions,
   SearchField,
   StatusBadge,
   Table,
   linkCls,
 } from "@/components/ui";
-import { ChangeStatusModal, RouteCell } from "@/components/workflow";
+import { ChangeStatusModal } from "@/components/workflow";
+import { JobsTabs } from "@/components/JobsTabs";
 
 function Enquiries() {
   const { state } = useStore();
-  const { customer } = useLookups();
+  const { customer, portLabel } = useLookups();
   const params = useSearchParams();
   const initialStage = params.get("stage") as StageKey | null;
   const [stage, setStage] = useState<StageKey | "all">(initialStage && STAGES.some((s) => s.key === initialStage) ? initialStage : "all");
@@ -98,12 +97,12 @@ function Enquiries() {
   return (
     <>
       <PageHeader
-        title="Enquiries"
-        subtitle="View and manage all customer enquiries"
+        title="Jobs"
+        subtitle="From enquiry to job in one place: enquiries, quotations and bookings"
         actions={
           <>
             <LinkButton href="/enquiries/new">
-              <Plus size={16} aria-hidden /> New Enquiry
+              <Plus size={16} aria-hidden /> Add Enquiry
             </LinkButton>
             <Button variant="secondary" onClick={() => setShowStages((s) => !s)} aria-pressed={showStages} aria-label="Filter by stage" title="Filter by stage">
               <Filter size={16} aria-hidden />
@@ -111,6 +110,8 @@ function Enquiries() {
           </>
         }
       />
+
+      <JobsTabs />
 
       <KpiFilters cols={6} rows={state.enquiries} kpis={KPIS} active={kpi} onChange={setKpi} />
 
@@ -169,53 +170,28 @@ function Enquiries() {
           <Table>
             <thead>
               <tr>
+                <th className="w-px whitespace-nowrap">Actions</th>
                 <th aria-sort={newestFirst ? "descending" : "ascending"}>
                   <button onClick={() => setNewestFirst((n) => !n)} className="inline-flex items-center gap-1 rounded-sm hover:text-slate-800 focus-visible:outline-2 focus-visible:outline-brand-500">
                     Enquiry ID {newestFirst ? <ArrowDown size={12} aria-hidden /> : <ArrowUp size={12} aria-hidden />}
                   </button>
                 </th>
-                <th>Enquiry Date</th>
-                <th>Customer</th>
-                <th>Customer Type</th>
-                <th>Route</th>
+                <th>EQ Date</th>
+                <th>Type</th>
                 <th>Mode</th>
-                <th>Cargo Details</th>
+                <th>Customer Name</th>
+                <th>POL</th>
+                <th>Route</th>
+                <th>POD</th>
                 <th>Status</th>
-                <th>Owner</th>
-                <th className="w-14 text-center">Actions</th>
+                <th>Status Date</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((e) => (
                 <tr key={e.id} className="hover:bg-slate-50">
                   <td className="whitespace-nowrap">
-                    <Link href={`/enquiries/${e.id}`} className={linkCls}>
-                      {e.ref}
-                    </Link>
-                  </td>
-                  <td className="whitespace-nowrap text-slate-600">{fmtDate(e.enquiryDate)}</td>
-                  <td className="max-w-32 truncate" title={customer(e.customerId)?.name}>
-                    {customer(e.customerId)?.name}
-                  </td>
-                  <td className="whitespace-nowrap">{customer(e.customerId) && <Badge className={CUSTOMER_TYPE_TONE[customer(e.customerId)!.type]}>{customer(e.customerId)!.type}</Badge>}</td>
-                  <td>
-                    <RouteCell pol={e.pol} pod={e.pod} />
-                  </td>
-                  <td className="whitespace-nowrap" title={`${e.cargoMode} ${e.shipmentMode}`}>
-                    {e.cargoMode}
-                  </td>
-                  <td className="max-w-28 truncate text-slate-600" title={`${e.packages} ${e.packageType} · ${e.chargeableWeight} kg · ${e.commodity}`}>
-                    {e.chargeableWeight} kg / {e.commodity}
-                  </td>
-                  <td className="whitespace-nowrap">
-                    <StatusBadge status={e.status} />
-                    <div className="mt-0.5 text-[11px] text-slate-400" title={`Status since ${fmtDate(e.statusAt)}`}>
-                      {laps(e.statusAt)}
-                    </div>
-                  </td>
-                  <td className="whitespace-nowrap text-slate-600">{e.salesPerson || "—"}</td>
-                  <td className="text-center">
-                    <RowMenu
+                    <RowActions
                       label={`Actions for ${e.ref}`}
                       items={[
                         { label: "View", href: `/enquiries/${e.id}` },
@@ -224,13 +200,45 @@ function Enquiries() {
                       ]}
                     />
                   </td>
+                  <td className="whitespace-nowrap">
+                    <Link href={`/enquiries/${e.id}`} className={linkCls}>
+                      {e.ref}
+                    </Link>
+                  </td>
+                  <td className="whitespace-nowrap text-slate-600">{fmtDate(e.enquiryDate)}</td>
+                  <td className="whitespace-nowrap">{e.shipmentMode}</td>
+                  <td className="whitespace-nowrap">{e.cargoMode}</td>
+                  <td className="max-w-40 truncate" title={customer(e.customerId)?.name}>
+                    {customer(e.customerId)?.name}
+                  </td>
+                  <td className="whitespace-nowrap">
+                    <abbr title={portLabel(e.pol)} className="no-underline">
+                      {e.pol}
+                    </abbr>
+                  </td>
+                  <td className="whitespace-nowrap text-slate-600" title={e.connections.map((c) => c.transit).join(" → ")}>
+                    {e.route}
+                    {e.route === "Connection" && e.connections.length > 0 && <span className="text-xs text-slate-400"> via {e.connections.map((c) => c.transit).join(", ")}</span>}
+                  </td>
+                  <td className="whitespace-nowrap">
+                    <abbr title={portLabel(e.pod)} className="no-underline">
+                      {e.pod}
+                    </abbr>
+                  </td>
+                  <td className="whitespace-nowrap">
+                    <StatusBadge status={e.status} />
+                  </td>
+                  <td className="whitespace-nowrap text-slate-600">
+                    {fmtDate(e.statusAt)}
+                    <div className="text-xs text-slate-400">{laps(e.statusAt)}</div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </Table>
         ) : (
           <NoResults filtered={filtered} onClear={reset}>
-            No enquiries yet. Add one from the Mail Box or with New Enquiry.
+            No enquiries yet. Add one from the Mail Box or with Add Enquiry.
           </NoResults>
         )}
       </Card>

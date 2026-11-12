@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, Plus, Trash2 } from "lucide-react";
-import { type InvoiceInput, nextInvoiceNo, useLookups, useStore } from "@/lib/store";
-import type { CustomerInvoice, InvoiceItem } from "@/lib/types";
-import { amountInWords, fmtPort, round2, uid } from "@/lib/utils";
-import { Button, Card, Field, Input, Modal, Select, Textarea } from "./ui";
+import { Eye, FileCheck2, Plus, Send, Trash2 } from "lucide-react";
+import { type InvoiceInput, useLookups, useStore } from "@/lib/store";
+import { STAKEHOLDER_TYPES, type CustomerInvoice, type InvoiceItem, type StakeholderType } from "@/lib/types";
+import { INVOICE_TONE, amountInWords, f2, fmtPort, round2, today, uid } from "@/lib/utils";
+import { ComposeEmail } from "./ComposeEmail";
+import { Badge, Button, Card, Field, Input, Modal, Select, Textarea, useUnsavedChanges } from "./ui";
 
-const f2 = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDot = (iso: string) => (iso ? iso.split("-").reverse().join(".") : "");
 
 export const itemAmount = (i: InvoiceItem) => round2(i.quantity * i.rate);
@@ -35,9 +35,11 @@ export function amountChargeable(amount: number, currency: string) {
   return `${currency} ${amountInWords(whole)} ${unit}${cents ? ` and ${amountInWords(cents)} ${sub[0].toUpperCase()}${sub.slice(1)}` : ""} Only`;
 }
 
-export function emptyInvoice(customerId = ""): InvoiceInput {
+export function emptyInvoice(customerId = "", stakeholderType: StakeholderType = "Shipper"): InvoiceInput {
   return {
-    date: new Date().toISOString().slice(0, 10),
+    no: "",
+    date: today(),
+    stakeholderType,
     customerId,
     exporter: "",
     exporterRef: "",
@@ -57,7 +59,7 @@ export function emptyInvoice(customerId = ""): InvoiceInput {
     currency: "USD",
     marks: "",
     packageRange: "",
-    items: [{ id: uid(), description: "", packages: 0, quantity: 0, rate: 0 }],
+    items: [{ id: uid(), description: "", hsn: "", packages: 0, quantity: 0, rate: 0 }],
     grossWeight: 0,
     declaration: "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.",
   };
@@ -69,7 +71,7 @@ export function InvoiceDocument({ inv }: { inv: CustomerInvoice }) {
   const cell = "border border-slate-800 px-2 py-1 align-top";
   const label = "font-bold";
   return (
-    <div className="overflow-x-auto bg-white text-[11px] text-slate-900">
+    <div className="doc-sheet overflow-x-auto bg-white text-[0.6875rem] text-slate-900">
       <table className="w-full min-w-[44rem] border-collapse font-serif">
         <colgroup>
           <col className="w-[24%]" />
@@ -123,7 +125,7 @@ export function InvoiceDocument({ inv }: { inv: CustomerInvoice }) {
               <div className="text-center font-bold uppercase">{inv.preCarriage}</div>
             </td>
             <td className={`${cell} text-center`}>
-              <div className="text-[10px] font-bold">Place of receipt by Pre-Carrier</div>
+              <div className="text-[0.625rem] font-bold">Place of receipt by Pre-Carrier</div>
               <div className="font-bold uppercase">{inv.placeOfReceipt}</div>
             </td>
             <td colSpan={4} className={cell}>
@@ -159,7 +161,7 @@ export function InvoiceDocument({ inv }: { inv: CustomerInvoice }) {
           </tr>
           <tr className="text-center font-bold">
             <td colSpan={2} className={cell}>
-              Description of Goods
+              Description of Goods · HSN Code
             </td>
             <td className={cell}>
               No.&amp; Kind
@@ -194,7 +196,10 @@ export function InvoiceDocument({ inv }: { inv: CustomerInvoice }) {
           {inv.items.map((i) => (
             <tr key={i.id} className="font-bold">
               <td className="border-l border-slate-800" />
-              <td className="border-r border-slate-800 px-2 py-0.5 uppercase">{i.description}</td>
+              <td className="border-r border-slate-800 px-2 py-0.5 uppercase">
+                {i.description}
+                {i.hsn && <span className="ml-2 font-normal">HSN {i.hsn}</span>}
+              </td>
               <td className="border-x border-slate-800 px-2 py-0.5 text-center tabular-nums">{i.packages || ""}</td>
               <td className="border-x border-slate-800 px-2 py-0.5 text-right tabular-nums">{f2(i.quantity)}</td>
               <td className="border-x border-slate-800 px-2 py-0.5 text-right tabular-nums">{f2(i.rate)}</td>
@@ -246,20 +251,31 @@ export function InvoiceDocument({ inv }: { inv: CustomerInvoice }) {
   );
 }
 
-export function InvoicePreview({ inv, onClose }: { inv: CustomerInvoice; onClose: () => void }) {
+/** Preview, with "Send" to forward the invoice to the customer for approval */
+export function InvoicePreview({ inv, onClose, onSend }: { inv: CustomerInvoice; onClose: () => void; onSend?: () => void }) {
   return (
     <Modal
       open
       onClose={onClose}
-      title={`Invoice · ${inv.no}`}
+      title={`Invoice · ${inv.no || "(no number yet)"}`}
       wide
       footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Close
-          </Button>
-          <Button onClick={() => window.print()}>Print / Save PDF</Button>
-        </>
+        <div className="flex w-full flex-wrap items-center justify-between gap-2">
+          <Badge className={INVOICE_TONE[inv.status]}>{inv.status}</Badge>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={onClose}>
+              Back to invoice
+            </Button>
+            <Button variant="secondary" onClick={() => window.print()}>
+              Print / Save PDF
+            </Button>
+            {onSend && (
+              <Button onClick={onSend}>
+                <Send size={14} aria-hidden /> Send
+              </Button>
+            )}
+          </div>
+        </div>
       }
     >
       <InvoiceDocument inv={inv} />
@@ -267,49 +283,91 @@ export function InvoicePreview({ inv, onClose }: { inv: CustomerInvoice; onClose
   );
 }
 
-/** Create / edit a customer invoice. Picking a booking fills the routing from its enquiry. */
+/** Invoice to the stakeholder for approval → Awaiting Confirmation */
+export function SendInvoiceFlow({ inv, onClose }: { inv: CustomerInvoice; onClose: () => void }) {
+  const { state, actions } = useStore();
+  const c = state.customers.find((x) => x.id === inv.customerId);
+  const t = invoiceTotals(inv);
+  return (
+    <ComposeEmail
+      title={`Send Invoice for Approval · ${inv.no}`}
+      initial={{
+        to: c ? [c.email, ...c.altEmails].filter(Boolean) : [],
+        cc: state.settings.company.email,
+        subject: `Invoice cum packing list ${inv.no} – for your approval`,
+        body: `Dear ${c?.contact || "Sir / Madam"},\n\nPlease find attached the invoice cum packing list ${inv.no} prepared on your behalf for approval.\n\nConsignee: ${inv.consignee.split("\n")[0]}\nPackages: ${t.packages} · Net ${t.quantity} kg · Gross ${inv.grossWeight} kg\nTotal: ${inv.currency} ${t.amount.toFixed(2)}\n\nKindly confirm or share any corrections.`,
+      }}
+      attachments={[`Invoice-${inv.no}.pdf`]}
+      onClose={onClose}
+      onSend={(mail) => {
+        actions.sendInvoiceForApproval(inv.id, mail);
+        onClose();
+      }}
+    />
+  );
+}
+
+/**
+ * Create / edit a customer invoice (template method). Stakeholder type first, then the name; picking
+ * a booking fills the routing. Buttons: Preview | Save (Draft) | Generate (after the customer confirms).
+ */
 export function InvoiceForm({ initial, existing, onSubmit }: { initial: InvoiceInput; existing?: CustomerInvoice; onSubmit: (data: InvoiceInput) => void }) {
-  const { state } = useStore();
+  const { state, actions } = useStore();
   const { customer, enquiry, port } = useLookups();
   const [f, setF] = useState<InvoiceInput>(initial);
-  const [preview, setPreview] = useState(false);
+  const [dialog, setDialog] = useState<"preview" | "send" | null>(null);
+  const ofType = state.customers.filter((c) => c.type === f.stakeholderType && c.status !== "Inactive");
+  const [partyText, setPartyText] = useState(customer(initial.customerId)?.name ?? "");
   const set = <K extends keyof InvoiceInput>(k: K, v: InvoiceInput[K]) => setF((x) => ({ ...x, [k]: v }));
   const text = (k: keyof InvoiceInput, upper = false) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     set(k, (upper ? e.target.value.toUpperCase() : e.target.value) as never);
   const setItem = (id: string, patch: Partial<InvoiceItem>) => set("items", f.items.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   const t = invoiceTotals(f);
-  const no = existing?.no ?? nextInvoiceNo(state);
-  const valid = f.customerId && f.exporter.trim() && f.consignee.trim() && f.items.some((i) => i.description.trim() && i.quantity > 0);
+  const no = f.no;
+  const duplicateNo = state.invoices.some((i) => i.id !== existing?.id && i.no.trim().toLowerCase() === f.no.trim().toLowerCase() && i.status !== "Cancelled");
+  const valid = f.no.trim() && !duplicateNo && f.customerId && f.exporter.trim() && f.consignee.trim() && f.items.some((i) => i.description.trim() && i.quantity > 0);
   const dirty = JSON.stringify(f) !== JSON.stringify(initial);
+  useUnsavedChanges(dirty);
   const city = (code: string) => port(code)?.name.toUpperCase() ?? code;
 
   const pickCustomer = (id: string) => {
     const c = customer(id);
     setF((x) => ({ ...x, customerId: id, exporter: c ? [c.name, c.address].filter(Boolean).join("\n").toUpperCase() : x.exporter }));
   };
+  // Type & search: the name typed picks the stakeholder once it matches
+  const typeParty = (text: string) => {
+    setPartyText(text);
+    const c = ofType.find((x) => x.name.toLowerCase() === text.trim().toLowerCase());
+    if (c) pickCustomer(c.id);
+    else setF((x) => ({ ...x, customerId: "" }));
+  };
   const pickJob = (jobId: string) => {
     const j = state.jobs.find((x) => x.id === jobId);
-    const e = enquiry(j?.enquiryId);
-    if (!j || !e) return setF((x) => ({ ...x, jobId: undefined, enquiryId: undefined }));
-    const c = customer(e.customerId);
+    if (!j) return setF((x) => ({ ...x, jobId: undefined, enquiryId: undefined }));
+    // A job from a reservation has no enquiry: its own routing and the reservation's cargo are used
+    const e = enquiry(j.enquiryId);
+    const cargo = e ?? state.reservations.find((r) => r.id === j.reservationId);
+    const c = customer(j.customerId);
     setF((x) => ({
       ...x,
       jobId,
-      enquiryId: e.id,
-      customerId: e.customerId,
+      enquiryId: e?.id,
+      customerId: x.customerId || j.customerId,
+      stakeholderType: x.customerId ? x.stakeholderType : (c?.type ?? x.stakeholderType),
       exporter: x.exporter || (c ? [c.name, c.address].filter(Boolean).join("\n").toUpperCase() : ""),
-      placeOfReceipt: city(e.pol),
-      portOfLoading: city(e.pol),
-      portOfDischarge: city(e.pod),
-      finalDestination: city(e.pod),
-      countryOfDestination: (port(e.pod)?.country ?? "").toUpperCase(),
+      placeOfReceipt: city(j.pol),
+      portOfLoading: city(j.pol),
+      portOfDischarge: city(j.pod),
+      finalDestination: city(j.pod),
+      countryOfDestination: (port(j.pod)?.country ?? "").toUpperCase(),
       flightNo: j.flightNo || x.flightNo,
-      grossWeight: x.grossWeight || e.grossWeight,
-      terms: x.terms || e.incoterm,
+      grossWeight: x.grossWeight || cargo?.grossWeight || j.weight,
+      terms: x.terms || cargo?.incoterm || "",
     }));
   };
 
-  const draftInvoice: CustomerInvoice = { ...f, id: existing?.id ?? "preview", no, createdAt: existing?.createdAt ?? "" };
+  const draftInvoice: CustomerInvoice = { ...f, id: existing?.id ?? "preview", createdAt: existing?.createdAt ?? "", status: existing?.status ?? "Draft", statusAt: existing?.statusAt ?? "" };
+  const editable = existing?.status !== "Cancelled";
   const section = "mb-3 text-xs font-semibold tracking-wide text-slate-500 uppercase";
 
   return (
@@ -322,9 +380,9 @@ export function InvoiceForm({ initial, existing, onSubmit }: { initial: InvoiceI
     >
       <Card>
         <h3 className={section}>Invoice</h3>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Field label="Invoice No">
-            <Input value={no} readOnly disabled className="font-mono" />
+        <div className="grid grid-cols-1 max-xs:*:col-span-full xs:grid-cols-2 gap-3 lg:grid-cols-4">
+          <Field label="Invoice No *" hint={duplicateNo ? <span className="text-red-600">Another invoice already has this number</span> : "Manual entry"}>
+            <Input value={no} onChange={text("no", true)} className="font-mono" aria-invalid={duplicateNo} />
           </Field>
           <Field label="Date">
             <Input type="date" value={f.date} onChange={text("date")} required />
@@ -341,7 +399,7 @@ export function InvoiceForm({ initial, existing, onSubmit }: { initial: InvoiceI
           </Field>
           <Field label="Currency">
             <Select value={f.currency} onChange={(e) => set("currency", e.target.value)}>
-              {[...new Set(["USD", ...state.settings.currencies.map((c) => c.code)])].map((c) => (
+              {[...new Set([f.currency, ...state.currencies.filter((c) => c.active).map((c) => c.code)])].map((c) => (
                 <option key={c}>{c}</option>
               ))}
             </Select>
@@ -353,21 +411,34 @@ export function InvoiceForm({ initial, existing, onSubmit }: { initial: InvoiceI
         <h3 className={section}>Parties</h3>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="space-y-3">
-            <Field label="Customer (exporter) *">
-              <Select value={f.customerId} onChange={(e) => pickCustomer(e.target.value)} required>
-                <option value="">Select customer</option>
-                {state.customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} · {c.type}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+            <div className="grid grid-cols-1 max-xs:*:col-span-full xs:grid-cols-2 gap-3">
+              <Field label="Stakeholder Type">
+                <Select
+                  value={f.stakeholderType}
+                  onChange={(e) => {
+                    setF((x) => ({ ...x, stakeholderType: e.target.value as StakeholderType, customerId: "" }));
+                    setPartyText("");
+                  }}
+                >
+                  {STAKEHOLDER_TYPES.map((t) => (
+                    <option key={t}>{t}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Stakeholder Name *" hint={partyText && !f.customerId ? <span className="text-amber-700">Pick a name from the list</span> : `${ofType.length} ${f.stakeholderType.toLowerCase()} in the master`}>
+                <Input value={partyText} onChange={(e) => typeParty(e.target.value)} list="invoice-parties" placeholder="Type to search" />
+                <datalist id="invoice-parties">
+                  {ofType.map((c) => (
+                    <option key={c.id} value={c.name} />
+                  ))}
+                </datalist>
+              </Field>
+            </div>
             <Field label="Exporter name & address *">
               <Textarea rows={4} value={f.exporter} onChange={text("exporter", true)} />
             </Field>
           </div>
-          <div className="grid grid-cols-2 content-start gap-3">
+          <div className="grid grid-cols-1 max-xs:*:col-span-full xs:grid-cols-2 content-start gap-3">
             <Field label="Exporter Ref">
               <Input value={f.exporterRef} onChange={text("exporterRef")} />
             </Field>
@@ -389,7 +460,7 @@ export function InvoiceForm({ initial, existing, onSubmit }: { initial: InvoiceI
 
       <Card>
         <h3 className={section}>Shipment</h3>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        <div className="grid grid-cols-1 max-xs:*:col-span-full xs:grid-cols-2 gap-3 lg:grid-cols-3">
           <Field label="Pre-Carriage by">
             <Input value={f.preCarriage} onChange={text("preCarriage", true)} />
           </Field>
@@ -430,12 +501,12 @@ export function InvoiceForm({ initial, existing, onSubmit }: { initial: InvoiceI
       <Card
         title="Goods"
         actions={
-          <Button size="sm" variant="secondary" onClick={() => set("items", [...f.items, { id: uid(), description: "", packages: 0, quantity: 0, rate: 0 }])}>
+          <Button size="sm" variant="secondary" onClick={() => set("items", [...f.items, { id: uid(), description: "", hsn: "", packages: 0, quantity: 0, rate: 0 }])}>
             <Plus size={13} aria-hidden /> Add item
           </Button>
         }
       >
-        <div className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="mb-3 grid grid-cols-1 max-xs:*:col-span-full xs:grid-cols-2 gap-3 lg:grid-cols-4">
           <Field label="Marks & Nos" hint="e.g. F/ADD">
             <Input value={f.marks} onChange={text("marks", true)} />
           </Field>
@@ -451,6 +522,7 @@ export function InvoiceForm({ initial, existing, onSubmit }: { initial: InvoiceI
             <thead className="bg-slate-50 text-xs text-slate-500">
               <tr className="[&>th]:px-2 [&>th]:py-2 [&>th]:text-left [&>th]:font-medium">
                 <th>Description of goods</th>
+                <th className="w-32">HSN Code</th>
                 <th className="w-28">Packages</th>
                 <th className="w-32">Qty (net kg)</th>
                 <th className="w-28">Rate / kg</th>
@@ -463,6 +535,18 @@ export function InvoiceForm({ initial, existing, onSubmit }: { initial: InvoiceI
                 <tr key={i.id} className="border-t border-slate-100 [&>td]:px-2 [&>td]:py-1.5">
                   <td>
                     <Input aria-label="Description" value={i.description} onChange={(e) => setItem(i.id, { description: e.target.value.toUpperCase() })} />
+                  </td>
+                  <td>
+                    <Input
+                      aria-label="HSN code"
+                      value={i.hsn}
+                      list="hsn-codes"
+                      onChange={(e) => {
+                        const hsn = e.target.value;
+                        const code = state.settings.hsnCodes.find((h) => h.code === hsn);
+                        setItem(i.id, { hsn, ...(code && !i.description && { description: code.short.toUpperCase() }) });
+                      }}
+                    />
                   </td>
                   <td>
                     <Input aria-label="Packages" type="number" min="0" value={i.packages || ""} onChange={(e) => setItem(i.id, { packages: Number(e.target.value) })} />
@@ -487,6 +571,7 @@ export function InvoiceForm({ initial, existing, onSubmit }: { initial: InvoiceI
             <tfoot>
               <tr className="border-t-2 border-slate-200 font-semibold [&>td]:px-2 [&>td]:py-2">
                 <td>Total</td>
+                <td />
                 <td className="tabular-nums">{t.packages}</td>
                 <td className="tabular-nums">{f2(t.quantity)}</td>
                 <td />
@@ -495,6 +580,13 @@ export function InvoiceForm({ initial, existing, onSubmit }: { initial: InvoiceI
               </tr>
             </tfoot>
           </table>
+          <datalist id="hsn-codes">
+            {state.settings.hsnCodes.map((h) => (
+              <option key={h.id} value={h.code}>
+                {h.short}
+              </option>
+            ))}
+          </datalist>
         </div>
         <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">Amount chargeable: {amountChargeable(t.amount, f.currency)}</p>
         <Field label="Declaration" className="mt-3">
@@ -503,15 +595,32 @@ export function InvoiceForm({ initial, existing, onSubmit }: { initial: InvoiceI
       </Card>
 
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {!valid && <span className="mr-auto text-xs text-amber-700">To save, choose the customer, fill in the exporter and consignee, and add at least one item with a quantity.</span>}
-        <Button variant="secondary" onClick={() => setPreview(true)}>
+        {!valid && <span className="mr-auto text-xs text-amber-700">To save, enter the invoice no, pick the stakeholder, fill in the exporter and consignee, and add at least one item with a quantity.</span>}
+        {existing && valid && <span className="mr-auto text-xs text-slate-500">Status: <b>{existing.status}</b>{existing.status === "Awaiting Confirmation" && ". Generate once the customer confirms."}</span>}
+        <Button variant="secondary" onClick={() => setDialog("preview")}>
           <Eye size={15} aria-hidden /> Preview
         </Button>
-        <Button type="submit" disabled={!valid || (!!existing && !dirty)}>
-          {existing ? "Save changes" : "Create Invoice"}
+        <Button type="submit" variant={existing ? "primary" : "secondary"} disabled={!valid || !editable || (!!existing && !dirty)}>
+          {existing ? "Save changes" : "Save"}
         </Button>
+        {existing && (
+          <Button
+            disabled={existing.status !== "Awaiting Confirmation" || dirty}
+            title={existing.status === "Draft" ? "Send the invoice to the customer for approval first (Preview → Send)" : dirty ? "Save your changes first" : undefined}
+            onClick={() => actions.setInvoiceStatus(existing.id, "Generated")}
+          >
+            <FileCheck2 size={15} aria-hidden /> Generate
+          </Button>
+        )}
       </div>
-      {preview && <InvoicePreview inv={draftInvoice} onClose={() => setPreview(false)} />}
+      {dialog === "preview" && (
+        <InvoicePreview
+          inv={draftInvoice}
+          onClose={() => setDialog(null)}
+          onSend={existing && !dirty && ["Draft", "Awaiting Confirmation"].includes(existing.status) ? () => setDialog("send") : undefined}
+        />
+      )}
+      {dialog === "send" && existing && <SendInvoiceFlow inv={existing} onClose={() => setDialog(null)} />}
     </form>
   );
 }

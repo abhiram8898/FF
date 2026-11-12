@@ -1,12 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useState } from "react";
 import {
   CirclePause,
   CircleX,
+  FileStack,
   Package,
+  Plane,
   PlaneTakeoff,
   Plus,
 } from "lucide-react";
@@ -15,6 +17,7 @@ import { JOB_STATUSES, type Job, type JobStatus } from "@/lib/types";
 import {
   DATE_RANGES,
   type DateRange,
+  STATUS_TONE,
   cn,
   fmtDate,
   inRange,
@@ -35,12 +38,12 @@ import {
   NoResults,
   PageHeader,
   ResetFilters,
-  RowMenu,
+  RowActions,
   SearchField,
   Select,
   linkCls,
 } from "@/components/ui";
-import { JOB_STATUS_TONE } from "@/components/BookingJobForm";
+import { JobsTabs } from "@/components/JobsTabs";
 
 /** "2026-04" → "Apr 2026" */
 const fmtMonth = (v: string) =>
@@ -60,8 +63,8 @@ const CONFIRMED = [
 
 export default function BookingJobPage() {
   const router = useRouter();
-  const { state } = useStore();
-  const { customer, airline, quotation, enquiry } = useLookups();
+  const { state, actions } = useStore();
+  const { customer, airline, quotation, enquiry, reservation } = useLookups();
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<"all" | JobStatus>("all");
   const [carrier, setCarrier] = useState("all");
@@ -73,26 +76,34 @@ export default function BookingJobPage() {
   const is = (s: JobStatus) => (j: Job) => j.status === s;
   const KPIS: KpiDef<Job>[] = [
     { id: "all", icon: Package, label: "Bookings / Jobs" },
+    { id: "awb", icon: Plane, tone: "violet", label: "AWB In Progress", test: is("AWB In Progress") },
+    {
+      id: "docs",
+      icon: FileStack,
+      tone: "amber",
+      label: "Documents / CHA Pending",
+      test: (j) => ["Pending Documents", "Documents Uploaded", "CHA Dispatch Pending"].includes(j.status),
+    },
     {
       id: "departed",
       icon: PlaneTakeoff,
       tone: "green",
-      label: "Departed",
-      test: is("DEPARTED"),
+      label: "Departed / In Transit",
+      test: (j) => j.status === "Departed" || j.status === "Cargo In Transit",
     },
     {
       id: "hold",
       icon: CirclePause,
-      tone: "amber",
+      tone: "slate",
       label: "On Hold",
-      test: is("ON HOLD"),
+      test: is("On Hold"),
     },
     {
       id: "cancelled",
       icon: CircleX,
       tone: "red",
       label: "Cancelled",
-      test: is("CANCELLED"),
+      test: is("Cancelled"),
     },
   ];
   const kpiOk = kpiTest(KPIS, kpi);
@@ -151,7 +162,7 @@ export default function BookingJobPage() {
     {
       head: "Status",
       cell: (j) => (
-        <Badge className={JOB_STATUS_TONE[j.status]}>{j.status}</Badge>
+        <Badge className={STATUS_TONE[j.status]}>{j.status}</Badge>
       ),
     },
     {
@@ -193,7 +204,7 @@ export default function BookingJobPage() {
     },
     { head: "Additional Value 1", cell: (j) => j.additional1 },
     { head: "Additional Value 2", cell: (j) => j.additional2 },
-    { head: "Quotation No", cell: (j) => quotation(j.quotationId)?.ref },
+    { head: "Quotation / Reservation", cell: (j) => quotation(j.quotationId)?.ref ?? reservation(j.reservationId)?.ref },
     {
       head: "Docs",
       cell: (j) => j.documents.length || "",
@@ -204,8 +215,8 @@ export default function BookingJobPage() {
   return (
     <>
       <PageHeader
-        title="Booking/Job"
-        subtitle="Booking register for confirmed quotations. Scroll sideways to see every column."
+        title="Jobs"
+        subtitle="Booking register for confirmed quotations and reservations. Scroll sideways to see every column."
         actions={
           <Button onClick={() => setPicking(true)}>
             <Plus size={16} aria-hidden /> Add Booking
@@ -213,8 +224,10 @@ export default function BookingJobPage() {
         }
       />
 
+      <JobsTabs />
+
       <KpiFilters
-        cols={4}
+        cols={6}
         rows={state.jobs}
         kpis={KPIS}
         active={kpi}
@@ -274,7 +287,8 @@ export default function BookingJobPage() {
           >
             <table className="w-max min-w-full text-left text-sm whitespace-nowrap">
               <thead>
-                <tr className="bg-navy-700 text-xs text-white [&>th]:px-3 [&>th]:py-3 [&>th]:font-semibold">
+                <tr className="bg-navy-700 text-xs text-white [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold">
+                  <th className="w-px whitespace-nowrap">Actions</th>
                   <th className="sticky left-0 z-10 bg-navy-700">Date</th>
                   <th className="sticky left-[6.5rem] z-10 bg-navy-700 shadow-[2px_0_0_rgb(255_255_255/0.15)]">
                     Job No
@@ -291,13 +305,12 @@ export default function BookingJobPage() {
                       {c.head}
                     </th>
                   ))}
-                  <th className="text-center">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((j) => {
                   const rowBg =
-                    j.status === "CANCELLED" ? "bg-orange-50" : "bg-white";
+                    j.status === "Cancelled" ? "bg-orange-50" : "bg-white";
                   return (
                     <tr
                       key={j.id}
@@ -306,6 +319,25 @@ export default function BookingJobPage() {
                         rowBg,
                       )}
                     >
+                      <td className="whitespace-nowrap">
+                        <RowActions
+                          label={`Actions for ${j.ref}`}
+                          items={[
+                            {
+                              label: "Open / Edit",
+                              href: `/shipments/${j.id}`,
+                            },
+                            {
+                              label: "Duplicate",
+                              onSelect: () => router.push(`/shipments/${actions.duplicateJob(j.id).id}`),
+                            },
+                            ...(j.status !== "Cancelled" ? [{ label: "Convert to Reservation", href: `/reservations/new?fromJob=${j.id}` }] : []),
+                            ...(j.enquiryId ? [{ label: "View enquiry", href: `/enquiries/${j.enquiryId}` }] : []),
+                            ...(j.quotationId ? [{ label: "View quotation", href: `/quotations/${j.quotationId}` }] : []),
+                            ...(j.reservationId ? [{ label: "View reservation", href: `/reservations/${j.reservationId}` }] : []),
+                          ]}
+                        />
+                      </td>
                       <td
                         className={cn(
                           "sticky left-0 z-[1] w-[6.5rem] text-slate-600",
@@ -332,25 +364,6 @@ export default function BookingJobPage() {
                           {c.cell(j)}
                         </td>
                       ))}
-                      <td className="text-center">
-                        <RowMenu
-                          label={`Actions for ${j.ref}`}
-                          items={[
-                            {
-                              label: "Open / Edit",
-                              href: `/shipments/${j.id}`,
-                            },
-                            {
-                              label: "View enquiry",
-                              href: `/enquiries/${j.enquiryId}`,
-                            },
-                            {
-                              label: "View quotation",
-                              href: `/quotations/${j.quotationId}`,
-                            },
-                          ]}
-                        />
-                      </td>
                     </tr>
                   );
                 })}

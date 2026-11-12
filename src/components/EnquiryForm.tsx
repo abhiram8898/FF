@@ -1,13 +1,28 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Mail, UserPlus } from "lucide-react";
+import { ArrowDown, ArrowUp, Mail, Plus, Trash2, UserPlus } from "lucide-react";
 import { type EnquiryInput, useStore } from "@/lib/store";
-import { INCOTERMS, PRODUCT_TYPES, type Enquiry, type InboxEmail, type Port } from "@/lib/types";
-import { airlinesForRoute, buildRef, fmtPort, isEnquiryLocked, ratesForRoute, today, volumeCbm, volumetricWeight } from "@/lib/utils";
-import { Button, Card, Empty, Field, Fog, Input, LinkButton, PageHeader, Select, Textarea, buttonCls } from "./ui";
+import { INCOTERMS, MAX_CONNECTIONS, PRODUCT_TYPES, type ConnectionLeg, type Enquiry, type InboxEmail, type Port } from "@/lib/types";
+import {
+  airlinesForRoute,
+  branchCode,
+  buildRef,
+  customersOnly,
+  defaultFy,
+  fmtPort,
+  isEnquiryLocked,
+  ratesForRoute,
+  suggestedChargeable,
+  today,
+  uid,
+  userNames,
+  volumeCbm,
+  volumetricWeight,
+} from "@/lib/utils";
+import { Badge, Button, Card, Empty, Field, Fog, Input, LinkButton, PageHeader, Select, Textarea, buttonCls, useUnsavedChanges } from "./ui";
 import { RouteInsights } from "./workflow";
 
 /** Best-effort extraction of enquiry fields from a customer's email */
@@ -41,14 +56,82 @@ function parseEmail(email: InboxEmail, ports: Port[], packageTypes: string[]): P
   };
 }
 
-type SaveMode = "save" | "rates" | "forward";
+type SaveMode = "save" | "rates" | "forward" | "request";
+
+/** Connection routing: up to four legs, each with its airline, transit airport, flight and date */
+export function ConnectionsEditor({ value, onChange }: { value: ConnectionLeg[]; onChange: (legs: ConnectionLeg[]) => void }) {
+  const { state } = useStore();
+  const set = (id: string, patch: Partial<ConnectionLeg>) => onChange(value.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+  const move = (i: number, by: -1 | 1) => {
+    const next = [...value];
+    [next[i], next[i + by]] = [next[i + by], next[i]];
+    onChange(next);
+  };
+  return (
+    <div className="space-y-2">
+      {value.map((l, i) => (
+        <div key={l.id} className="grid grid-cols-2 items-end gap-2 rounded-lg border border-slate-200 bg-slate-50/50 p-2.5 sm:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
+          <Field label={`Connection ${i + 1} · Airline`}>
+            <Select value={l.airlineId} onChange={(e) => set(l.id, { airlineId: e.target.value })}>
+              <option value="">Select airline</option>
+              {state.airlines.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Transit airport">
+            <Select value={l.transit} onChange={(e) => set(l.id, { transit: e.target.value })}>
+              <option value="">Select</option>
+              {state.ports
+                .filter((p) => p.status === "Active" || p.code === l.transit)
+                .map((p) => (
+                  <option key={p.code} value={p.code}>
+                    {fmtPort(p)}
+                  </option>
+                ))}
+            </Select>
+          </Field>
+          <Field label="Flight no.">
+            <Input value={l.flightNo} onChange={(e) => set(l.id, { flightNo: e.target.value.toUpperCase() })} />
+          </Field>
+          <Field label="Date">
+            <Input type="date" value={l.date} onChange={(e) => set(l.id, { date: e.target.value })} />
+          </Field>
+          <div className="col-span-2 flex justify-end sm:col-span-1">
+            <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="rounded p-1.5 text-slate-500 hover:bg-white disabled:opacity-30" aria-label={`Move connection ${i + 1} up`}>
+              <ArrowUp size={14} />
+            </button>
+            <button type="button" onClick={() => move(i, 1)} disabled={i === value.length - 1} className="rounded p-1.5 text-slate-500 hover:bg-white disabled:opacity-30" aria-label={`Move connection ${i + 1} down`}>
+              <ArrowDown size={14} />
+            </button>
+            <button type="button" onClick={() => onChange(value.filter((x) => x.id !== l.id))} className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label={`Remove connection ${i + 1}`}>
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
+      ))}
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={value.length >= MAX_CONNECTIONS}
+        title={value.length >= MAX_CONNECTIONS ? `Up to ${MAX_CONNECTIONS} connections` : undefined}
+        onClick={() => onChange([...value, { id: uid(), airlineId: value.at(-1)?.airlineId ?? "", transit: "", flightNo: "", date: "" }])}
+      >
+        <Plus size={13} aria-hidden /> {value.length ? "Add next connection" : "Add connection"}
+      </Button>
+    </div>
+  );
+}
 
 export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: InboxEmail }) {
   const router = useRouter();
   const { state, actions } = useStore();
   const { settings } = state;
-  const emailCustomer = state.customers.find((c) => c.email.toLowerCase() === email?.fromEmail.toLowerCase());
-  const users = settings.users.map((u) => u.name);
+  const customers = customersOnly(state.customers);
+  const emailCustomer = customers.find((c) => c.email.toLowerCase() === email?.fromEmail.toLowerCase());
+  const users = userNames(settings);
 
   const [f, setF] = useState<EnquiryInput>(() => {
     if (existing) {
@@ -59,7 +142,7 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
     }
     return {
       branch: settings.branches[0]?.name ?? "",
-      financialYear: settings.financialYears.at(-1)!,
+      financialYear: defaultFy(settings),
       enquiryDate: today(),
       customerId: emailCustomer?.id ?? "",
       cargoMode: "Air",
@@ -69,10 +152,11 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
       pol: "",
       pod: "",
       route: "Direct",
+      connections: [],
       commodity: "",
       productType: "Non-Perishable",
-      packageType: settings.packageTypes[0],
-      unitType: settings.unitTypes[0],
+      packageType: settings.packageTypes[0]?.description ?? "",
+      unitType: settings.unitTypes[0]?.short ?? "",
       packages: 1,
       grossWeight: 0,
       chargeableWeight: 0,
@@ -80,27 +164,44 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
       width: 0,
       height: 0,
       requestedDate: "",
-      clearancePlace: settings.clearancePlaces[0],
+      clearancePlace: settings.clearancePlaces[0]?.name ?? "",
       transitTime: "",
       airlineIds: [],
       salesPerson: users[0],
       pricingPerson: users[0],
       remarks: "",
-      ...(email && parseEmail(email, state.ports, settings.packageTypes)),
+      ...(email && parseEmail(email, state.ports, settings.packageTypes.map((p) => p.description))),
     };
   });
-  // Chargeable weight follows gross weight until the user edits it
-  const [cwTouched, setCwTouched] = useState(!!existing);
+  const [start] = useState(() => JSON.stringify(f));
+  useUnsavedChanges(JSON.stringify(f) !== start);
+  // Chargeable weight follows the higher of gross and volumetric weight until the user edits it
+  const [cwTouched, setCwTouched] = useState(!!existing && existing.chargeableWeight !== suggestedChargeable(existing, settings));
   const [fog, setFog] = useState("");
+  // Settings → Ref Number Format: with automatic generation off the number is typed in
+  const manualRef = !existing && !settings.enquiryRef.auto;
+  const [typedRef, setTypedRef] = useState("");
+  const refTaken = manualRef && state.enquiries.some((e) => e.ref.trim().toLowerCase() === typedRef.trim().toLowerCase());
 
   const set = <K extends keyof EnquiryInput>(k: K, v: EnquiryInput[K]) => setF((prev) => ({ ...prev, [k]: v }));
-  const num = (k: keyof EnquiryInput) => (e: React.ChangeEvent<HTMLInputElement>) => set(k, Number(e.target.value) as never);
+  // Weight and dimensions re-suggest the chargeable weight unless it was typed in
+  const setCargo = (k: "grossWeight" | "packages" | "length" | "width" | "height", v: number) =>
+    setF((prev) => {
+      const next = { ...prev, [k]: v };
+      return cwTouched ? next : { ...next, chargeableWeight: suggestedChargeable(next, settings) };
+    });
+  const num = (k: "packages" | "length" | "width" | "height") => (e: React.ChangeEvent<HTMLInputElement>) => setCargo(k, Number(e.target.value));
+  const suggested = suggestedChargeable(f, settings);
+  const volumetric = volumetricWeight(f, settings.volumetricDivisor);
 
   const missing = [
     !f.customerId && "Customer",
     !f.pol && "Origin (POL)",
     !f.pod && "Destination (POD)",
     f.pol && f.pol === f.pod && "a POD different from the POL",
+    f.route === "Connection" && !f.connections.length && "at least one connection",
+    manualRef && !typedRef.trim() && "Enquiry ID",
+    refTaken && "an Enquiry ID that isn't used yet",
     !f.commodity.trim() && "Commodity",
     !(f.grossWeight > 0) && "Gross Weight",
     !(f.chargeableWeight > 0) && "Chargeable Weight",
@@ -108,17 +209,27 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
   const valid = missing.length === 0;
   const nextRef =
     existing?.ref ??
-    buildRef(settings.enquiryRef, { company: settings.refPrefix, pol: f.pol || "POL", pod: f.pod || "POD", year: f.enquiryDate.slice(0, 4), seq: state.counters.enquiry + 1 });
+    buildRef(settings.enquiryRef, {
+      company: settings.refPrefix,
+      client: state.customers.find((c) => c.id === f.customerId)?.code,
+      branch: branchCode(settings, f.branch),
+      pol: f.pol || "POL",
+      pod: f.pod || "POD",
+      year: f.enquiryDate.slice(0, 4),
+      seq: state.counters.enquiry + 1,
+    });
   const routeAirlines = f.pol && f.pod ? airlinesForRoute(state.airlines, f.pol, f.pod) : state.airlines;
+  // FRD: show the previous shipments to the same destination as an insight while adding the enquiry
+  const previousToPod = state.enquiries.filter((e) => e.pod === f.pod && e.id !== existing?.id).length;
 
   const submit = (mode: SaveMode) => {
     if (!valid) return;
     // FRD IV: with no rates in the masters, show a message and keep the user on the screen
     if (mode === "rates" && !ratesForRoute(state.rates, f.pol, f.pod, existing?.id).length) {
-      setFog(`No rates updated in the masters for ${f.pol} → ${f.pod}. Use "Get Rate from Airline" to request rates, or add a rate manually from the enquiry.`);
+      setFog(`There is no Rates updated in the masters (${f.pol} → ${f.pod}), please check with the respective airlines. Use Save & Forward to request rates.`);
       return;
     }
-    const enq = actions.saveEnquiry(f, existing?.id);
+    const enq = actions.saveEnquiry({ ...f, connections: f.route === "Connection" ? f.connections : [] }, existing?.id, manualRef ? typedRef : undefined);
     if (mode === "save") router.push(existing ? `/enquiries/${enq.id}` : "/enquiries");
     else router.push(`/enquiries/${enq.id}?open=${mode}`);
   };
@@ -134,7 +245,7 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
     );
   }
 
-  const portOptions = state.ports.map((p) => (
+  const portOptions = state.ports.filter((p) => p.status === "Active" || p.code === f.pol || p.code === f.pod).map((p) => (
     <option key={p.code} value={p.code}>
       {fmtPort(p)}
     </option>
@@ -163,16 +274,28 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
               size="sm"
               variant="secondary"
               onClick={() => {
+                const [firstName, ...last] = email.fromName.split(" ");
                 const c = actions.saveCustomer({
-                  type: "Shipper/Receiver",
+                  type: "Shipper",
+                  status: "Draft",
                   code: "",
                   name: email.body.trim().split("\n").at(-1) || email.fromName,
-                  contact: email.fromName,
+                  address1: "",
+                  address2: "",
+                  country: "",
+                  state: "",
+                  city: "",
+                  postalCode: "",
+                  firstName,
+                  middleName: "",
+                  lastName: last.join(" "),
                   email: email.fromEmail,
-                  address: "",
                   phone: "",
                   altEmails: [],
                   altPhones: [],
+                  pan: "",
+                  gstin: "",
+                  bankAccount: "",
                   documents: [],
                 });
                 set("customerId", c.id);
@@ -193,7 +316,7 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
       >
         <div className="min-w-0 space-y-3">
           <Card title="Section 1 · Office selection">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-1 max-xs:*:col-span-full xs:grid-cols-2 gap-3 sm:grid-cols-4">
               <Field label="Branch">
                 <Select value={f.branch} onChange={(e) => set("branch", e.target.value)}>
                   {settings.branches.map((b) => (
@@ -203,31 +326,44 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
               </Field>
               <Field label="Financial Year">
                 <Select value={f.financialYear} onChange={(e) => set("financialYear", e.target.value)}>
-                  {settings.financialYears.map((y) => (
-                    <option key={y}>{y}</option>
-                  ))}
+                  {settings.financialYears
+                    .filter((y) => y.status !== "Closed" || y.name === f.financialYear)
+                    .map((y) => (
+                      <option key={y.code} value={y.name}>
+                        {y.name}
+                      </option>
+                    ))}
                 </Select>
               </Field>
             </div>
           </Card>
 
           <Card title="Section 2 · Customer and routing">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Field label="Enquiry ID" hint="System-generated">
-                <Input value={nextRef} readOnly disabled />
-              </Field>
+            <div className="grid grid-cols-1 max-xs:*:col-span-full xs:grid-cols-2 gap-3 sm:grid-cols-4">
+              {manualRef ? (
+                <Field label="Enquiry ID *" hint={refTaken ? <span className="text-red-600">Already used</span> : "Automatic numbering is off (Settings)"}>
+                  <Input value={typedRef} onChange={(e) => setTypedRef(e.target.value.toUpperCase())} placeholder={nextRef} />
+                </Field>
+              ) : (
+                <Field label="Enquiry ID" hint="System-generated">
+                  <Input value={nextRef} readOnly disabled />
+                </Field>
+              )}
               <Field label="Enquiry Date">
                 <Input type="date" value={f.enquiryDate} onChange={(e) => set("enquiryDate", e.target.value)} required />
               </Field>
               <Field label="Customer *" className="col-span-2">
                 <Select value={f.customerId} onChange={(e) => set("customerId", e.target.value)} required>
                   <option value="">Select customer</option>
-                  {state.customers.map((c) => (
+                  {customers.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name} · {c.type}
+                      {c.name}
                     </option>
                   ))}
                 </Select>
+              </Field>
+              <Field label="Customer Type" hint="From the Stakeholders master">
+                <Input value={state.customers.find((c) => c.id === f.customerId)?.type ?? ""} readOnly disabled />
               </Field>
               <Field label="Cargo Mode">
                 <Select value={f.cargoMode} onChange={(e) => set("cargoMode", e.target.value as EnquiryInput["cargoMode"])}>
@@ -272,13 +408,24 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
                 </Select>
               </Field>
               <Field label="Route">
-                <Input value={f.route} onChange={(e) => set("route", e.target.value)} placeholder="Direct / via DXB" />
+                <Select value={f.route} onChange={(e) => set("route", e.target.value as EnquiryInput["route"])}>
+                  <option>Direct</option>
+                  <option>Connection</option>
+                </Select>
               </Field>
+              <Field label="Transit Time">
+                <Input value={f.transitTime} onChange={(e) => set("transitTime", e.target.value)} placeholder="e.g. 1 day" />
+              </Field>
+              {f.route === "Connection" && (
+                <div className="col-span-2 sm:col-span-4">
+                  <ConnectionsEditor value={f.connections} onChange={(connections) => set("connections", connections)} />
+                </div>
+              )}
             </div>
           </Card>
 
           <Card title="Section 3 · Cargo details">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-1 max-xs:*:col-span-full xs:grid-cols-2 gap-3 sm:grid-cols-4">
               <Field label="Commodity *" className="col-span-2">
                 <Input value={f.commodity} onChange={(e) => set("commodity", e.target.value)} placeholder="Cargo description" required />
               </Field>
@@ -292,7 +439,9 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
               <Field label="Package Type">
                 <Select value={f.packageType} onChange={(e) => set("packageType", e.target.value)}>
                   {settings.packageTypes.map((p) => (
-                    <option key={p}>{p}</option>
+                    <option key={p.short} value={p.description}>
+                      {p.description}
+                    </option>
                   ))}
                 </Select>
               </Field>
@@ -302,22 +451,26 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
                   min="0"
                   step="0.01"
                   value={f.grossWeight || ""}
-                  onChange={(e) => {
-                    const g = Number(e.target.value);
-                    setF((prev) => ({ ...prev, grossWeight: g, chargeableWeight: cwTouched ? prev.chargeableWeight : g }));
-                  }}
+                  onChange={(e) => setCargo("grossWeight", Number(e.target.value))}
                   required
                 />
               </Field>
               <Field
                 label="Chargeable Weight (kg) *"
                 hint={
-                  volumetricWeight(f) > f.chargeableWeight ? (
-                    <button type="button" className="text-brand-700 hover:underline" onClick={() => { setCwTouched(true); set("chargeableWeight", volumetricWeight(f)); }}>
-                      Volumetric is {volumetricWeight(f)} kg. Use it.
+                  cwTouched && f.chargeableWeight !== suggested ? (
+                    <button
+                      type="button"
+                      className="text-brand-700 hover:underline"
+                      onClick={() => {
+                        setCwTouched(false);
+                        set("chargeableWeight", suggested);
+                      }}
+                    >
+                      Changed by hand. Use the suggested {suggested} kg
                     </button>
                   ) : (
-                    "Pre-populated from gross weight"
+                    `Higher of gross and volumetric (${volumetric} kg)`
                   )
                 }
               >
@@ -336,12 +489,14 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
               <Field label="Unit Type">
                 <Select value={f.unitType} onChange={(e) => set("unitType", e.target.value)}>
                   {settings.unitTypes.map((u) => (
-                    <option key={u}>{u}</option>
+                    <option key={u.short} value={u.short}>
+                      {u.short}: {u.description}
+                    </option>
                   ))}
                 </Select>
               </Field>
               <Field label="Number of Packages">
-                <Input type="number" min="1" value={f.packages} onChange={num("packages")} />
+                <Input type="number" min="1" value={f.packages || ""} onChange={num("packages")} />
               </Field>
               <Field label="Length (cm)">
                 <Input type="number" min="0" value={f.length || ""} onChange={num("length")} />
@@ -360,13 +515,10 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
               </Field>
               <Field label="Clearance Place">
                 <Select value={f.clearancePlace} onChange={(e) => set("clearancePlace", e.target.value)}>
-                  {settings.clearancePlaces.map((c) => (
+                  {[...new Set([f.clearancePlace, ...settings.clearancePlaces.map((c) => c.name)])].filter(Boolean).map((c) => (
                     <option key={c}>{c}</option>
                   ))}
                 </Select>
-              </Field>
-              <Field label="Transit Time">
-                <Input value={f.transitTime} onChange={(e) => set("transitTime", e.target.value)} placeholder="e.g. 1 day" />
               </Field>
               <div className="col-span-2 flex flex-col gap-1 sm:col-span-4">
                 <span className="text-xs font-medium text-slate-600">Airline Name(s)</span>
@@ -387,7 +539,7 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
                     <span className="text-sm text-slate-400">No airline serves this route.</span>
                   )}
                 </div>
-                <span className="text-xs text-slate-400">Selected airlines are pre-ticked when you use Get Rate from Airline.</span>
+                <span className="text-xs text-slate-400">Send Rate Request mails these airlines straight away (one mail per airline).</span>
               </div>
               <Field label="Sales Person">
                 <Select value={f.salesPerson} onChange={(e) => set("salesPerson", e.target.value)}>
@@ -423,20 +575,36 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
               <Link href={existing ? `/enquiries/${existing.id}` : "/enquiries"} className={buttonCls("secondary", "md")}>
                 Cancel
               </Link>
-              <Button type="submit" disabled={!valid}>
-                {existing ? "Save Changes" : "Save Enquiry"}
+              <Button type="submit" variant="secondary" disabled={!valid}>
+                {existing ? "Save Changes" : "Save"}
               </Button>
-              <Button variant="secondary" disabled={!valid} onClick={() => submit("rates")} title="Save, then compare the rates available in the masters">
-                Compare Available Rates
+              <Button disabled={!valid} onClick={() => submit("forward")} title="Save, then select the airlines to request rates from">
+                Save & Forward
               </Button>
-              <Button variant="secondary" disabled={!valid} onClick={() => submit("forward")} title="Save, then request a rate from airlines by email">
-                Get Rate from Airline
+              <Button variant="secondary" disabled={!valid} onClick={() => submit("rates")} title="Save, then compare the rates available in the masters for this POL & POD">
+                Compare Available Rate
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={!valid || !f.airlineIds.length}
+                onClick={() => submit("request")}
+                title={f.airlineIds.length ? "Save, then email the rate request to the airlines ticked above" : "Tick the airline(s) above first"}
+              >
+                Send Rate Request
               </Button>
             </div>
           </div>
         </div>
 
-        <aside className="lg:sticky lg:top-20 lg:self-start">
+        <aside className="space-y-3 lg:sticky lg:top-20 lg:self-start">
+          {f.pod && previousToPod > 0 && (
+            <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+              <Badge className="mb-1 bg-white text-sky-800 ring-sky-200">Insight</Badge>
+              <div>
+                {previousToPod} previous shipment{previousToPod > 1 && "s"} to {f.pod}. See them under Route insights.
+              </div>
+            </div>
+          )}
           <Card title="Route insights">
             <RouteInsights enquiry={{ ...f, id: existing?.id }} />
           </Card>

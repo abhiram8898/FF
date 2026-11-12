@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowRight, Eye, Plane, Plus, ReceiptText, Settings2, Trash2 } from "lucide-react";
+import { ArrowRight, Copy, Eye, Plane, Plus, ReceiptText, Settings2, Trash2 } from "lucide-react";
 import { useLookups, useStore } from "@/lib/store";
 import type { ChargeGroup, Quotation, QuoteLine } from "@/lib/types";
 import { fmtDate, lineGst, lineNet, lineTotal, money, quoteTotals, uid, volumeCbm } from "@/lib/utils";
-import { Button, Card, Empty, Field, Input, KeyValue, LinkButton, PageHeader, Select, StatusBadge, Textarea, linkCls } from "@/components/ui";
+import { Button, Card, Empty, Field, Input, KeyValue, LinkButton, PageHeader, Select, StatusBadge, Textarea, linkCls, useUnsavedChanges } from "@/components/ui";
 import { PreviewModal, QuotationActionsModal, SendQuotationFlow, takeActionHref } from "@/components/quotation";
 
 export default function QuotationPage() {
@@ -26,6 +26,7 @@ export default function QuotationPage() {
 
 // Only these fields are edited on this screen; status is owned by the store actions
 const editable = (x: Quotation) => ({
+  ref: x.ref,
   airlineId: x.airlineId,
   currency: x.currency,
   roe: x.roe,
@@ -45,11 +46,18 @@ function QuotationEditor({ q }: { q: Quotation }) {
 
   const [draft, setDraft] = useState(editable(q));
   const [dialog, setDialog] = useState<"preview" | "send" | "actions" | null>(null);
-  const locked = !["Draft", "Quote Confirmation Pending"].includes(q.status);
+  // The quotation can be revised (customer negotiation) before or after confirmation, until a job is created
+  const locked = !!enq.jobId || q.status === "Cancelled" || q.status === "Lost";
+  // Sending again after the booking has started would move the status back, so only until the shipment date
+  const canSend = !locked && ["Draft", "Quote Confirmation Pending", "Waiting for Shipment Date"].includes(q.status);
   const dirty = JSON.stringify(draft) !== JSON.stringify(editable(q));
+  useUnsavedChanges(dirty);
   const current: Quotation = { ...q, ...draft };
   const totals = quoteTotals(current);
   const blankLines = draft.lines.filter((l) => !l.particulars.trim()).length;
+  // Settings → Ref Number Format: with automatic generation off the quote number can be typed while it's a draft
+  const manualRef = !state.settings.quoteRef.auto && q.status === "Draft";
+  const refTaken = state.quotations.some((x) => x.id !== q.id && x.ref.toLowerCase() === draft.ref.trim().toLowerCase());
   const gstOptions = [...new Set([0, 5, 12, 18, 28, state.settings.gstPercent])].sort((a, b) => a - b);
 
   const save = () => actions.updateQuotation(q.id, draft);
@@ -76,8 +84,9 @@ function QuotationEditor({ q }: { q: Quotation }) {
     ["CBM", volumeCbm(enq).toFixed(4)],
     ["Product", enq.productType],
     ["Package Box Type", enq.packageType],
-    ["Transit Time", enq.transitTime],
     ["Route", enq.route],
+    ["Connections", enq.route === "Connection" ? enq.connections.map((c) => `${state.airlines.find((a) => a.id === c.airlineId)?.code ?? ""} via ${c.transit}`).join(", ") : "—"],
+    ["Transit Time", enq.transitTime],
   ];
 
   return (
@@ -100,10 +109,18 @@ function QuotationEditor({ q }: { q: Quotation }) {
         }
         actions={
           <>
+            <Button variant="secondary" size="sm" onClick={() => router.push(`/quotations/${actions.duplicateQuotation(q.id).id}`)} title="New quotation for a similar shipment for the same customer">
+              <Copy size={14} aria-hidden /> Duplicate
+            </Button>
             <Button variant="secondary" size="sm" onClick={() => setDialog("actions")}>
               <Settings2 size={14} /> Quotation Actions
             </Button>
-            {q.status !== "Draft" && (
+            {q.status === "Booking Confirmed" && !enq.jobId && (
+              <LinkButton size="sm" href={`/shipments/new?quotation=${q.id}`}>
+                Convert to Job <ArrowRight size={14} aria-hidden />
+              </LinkButton>
+            )}
+            {q.status !== "Draft" && !(q.status === "Booking Confirmed" && !enq.jobId) && (
               <Button
                 size="sm"
                 onClick={() => {
@@ -126,12 +143,17 @@ function QuotationEditor({ q }: { q: Quotation }) {
 
         <Card>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {manualRef && (
+              <Field label="Quote Number *" hint={refTaken ? <span className="text-red-600">Already used</span> : "Automatic numbering is off (Settings)"}>
+                <Input value={draft.ref} onChange={(e) => setDraft({ ...draft, ref: e.target.value.toUpperCase() })} className="font-mono" />
+              </Field>
+            )}
             <Field label="Cargo Dimension" className="col-span-2">
               <Input value={draft.cargoDimension} disabled={locked} onChange={(e) => setDraft({ ...draft, cargoDimension: e.target.value })} />
             </Field>
             <Field label="Clearance Place">
               <Select value={draft.clearancePlace} disabled={locked} onChange={(e) => setDraft({ ...draft, clearancePlace: e.target.value })}>
-                {state.settings.clearancePlaces.map((c) => (
+                {[...new Set([draft.clearancePlace, ...state.settings.clearancePlaces.map((c) => c.name)])].filter(Boolean).map((c) => (
                   <option key={c}>{c}</option>
                 ))}
               </Select>
@@ -141,10 +163,10 @@ function QuotationEditor({ q }: { q: Quotation }) {
                 value={draft.currency}
                 disabled={locked}
                 onChange={(e) =>
-                  setDraft({ ...draft, currency: e.target.value, roe: state.settings.currencies.find((c) => c.code === e.target.value)?.roe ?? 1 })
+                  setDraft({ ...draft, currency: e.target.value, roe: state.currencies.find((c) => c.code === e.target.value)?.roe ?? 1 })
                 }
               >
-                {state.settings.currencies.map((c) => (
+                {state.currencies.filter((c) => c.active || c.code === draft.currency).map((c) => (
                   <option key={c.code}>{c.code}</option>
                 ))}
               </Select>
@@ -252,7 +274,7 @@ function QuotationEditor({ q }: { q: Quotation }) {
           </section>
         ))}
 
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
           <div className="text-xs text-emerald-800">
             Airline {money(totals.airline)} · Agency {money(totals.agency)} · GST {money(totals.gst)} · Expected profit {money(totals.profit)}
           </div>
@@ -271,7 +293,7 @@ function QuotationEditor({ q }: { q: Quotation }) {
             </span>
           )}
           <LinkButton href={`/enquiries/${enq.id}`} variant="secondary">
-            {dirty ? "Discard changes" : "Back to enquiry"}
+            {dirty ? "Discard changes" : "Back To Enquiry"}
           </LinkButton>
           <Button variant="secondary" onClick={() => setDialog("preview")}>
             <Eye size={15} /> Preview
@@ -280,7 +302,7 @@ function QuotationEditor({ q }: { q: Quotation }) {
             <>
               <Button
                 variant="secondary"
-                disabled={!dirty}
+                disabled={!dirty || !draft.ref.trim() || refTaken}
                 onClick={() => {
                   save();
                   actions.toast("Quotation saved");
@@ -288,15 +310,17 @@ function QuotationEditor({ q }: { q: Quotation }) {
               >
                 Save
               </Button>
-              <Button
-                disabled={blankLines > 0}
-                onClick={() => {
-                  if (dirty) save();
-                  setDialog("send");
-                }}
-              >
-                {q.status === "Draft" ? "Save & Send" : "Save & Resend"}
-              </Button>
+              {canSend && (
+                <Button
+                  disabled={blankLines > 0 || !draft.ref.trim() || refTaken}
+                  onClick={() => {
+                    if (dirty) save();
+                    setDialog("send");
+                  }}
+                >
+                  {q.status === "Draft" ? "Save & Send" : "Save & Resend"}
+                </Button>
+              )}
             </>
           )}
         </div>
@@ -307,7 +331,7 @@ function QuotationEditor({ q }: { q: Quotation }) {
           q={current}
           onClose={() => setDialog(null)}
           onSend={
-            locked || blankLines > 0
+            !canSend || blankLines > 0
               ? undefined
               : () => {
                   if (dirty) save();

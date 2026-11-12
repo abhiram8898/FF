@@ -6,7 +6,7 @@ import { Bell, CalendarDays, Mail, MessageCircle } from "lucide-react";
 import { useLookups, useStore } from "@/lib/store";
 import type { Channel, Notification } from "@/lib/types";
 import { DATE_RANGES, type DateRange, fmtDateTime, inRange, matches } from "@/lib/utils";
-import { Badge, Card, FilterBar, FilterSelect, type KpiDef, KpiFilters, kpiTest, NoResults, PageHeader, ResetFilters, RowMenu, SearchField, Table, linkCls } from "@/components/ui";
+import { Badge, Card, FilterBar, FilterSelect, type KpiDef, KpiFilters, kpiTest, NoResults, PageHeader, ResetFilters, RowActions, SearchField, Table, linkCls } from "@/components/ui";
 
 export default function NotificationsPage() {
   const { state } = useStore();
@@ -61,12 +61,12 @@ export default function NotificationsPage() {
           <Table>
             <thead>
               <tr>
+                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Sent</th>
                 <th>Channel</th>
                 <th>To</th>
                 <th>Enquiry ID</th>
                 <th>Message</th>
-                <th className="w-14 text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -74,6 +74,7 @@ export default function NotificationsPage() {
                 const e = enquiry(n.enquiryId);
                 return (
                   <tr key={n.id} className="hover:bg-slate-50">
+                    <td className="whitespace-nowrap">{e && <RowActions label={`Actions for notification to ${n.to}`} items={[{ label: "View enquiry", href: `/enquiries/${e.id}` }]} />}</td>
                     <td className="whitespace-nowrap text-slate-600">{fmtDateTime(n.at)}</td>
                     <td>
                       <Badge className={n.channel === "WhatsApp" ? "bg-green-50 text-green-700 ring-green-200" : "bg-sky-50 text-sky-800 ring-sky-200"}>{n.channel}</Badge>
@@ -89,7 +90,6 @@ export default function NotificationsPage() {
                       )}
                     </td>
                     <td className="min-w-64 text-slate-700">{n.message}</td>
-                    <td className="text-center">{e && <RowMenu label={`Actions for notification to ${n.to}`} items={[{ label: "View enquiry", href: `/enquiries/${e.id}` }]} />}</td>
                   </tr>
                 );
               })}

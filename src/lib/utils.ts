@@ -1,29 +1,42 @@
 import type {
   Airline,
   AirlineRate,
+  AwbStatus,
+  Bill,
+  BillLine,
+  BillStatus,
+  Customer,
   CustomerType,
   Enquiry,
   EnquiryStatus,
+  InvoiceStatus,
+  JobStatus,
   Port,
   Quotation,
   QuotationStatus,
   QuoteLine,
   RefPattern,
+  ReservationStatus,
   Settings,
   StoredDoc,
+  User,
 } from "./types";
+import { CUSTOMER_TYPES, JOB_STATUSES } from "./types";
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
 
 export const round2 = (n: number) => Math.round(n * 100) / 100;
 export const round4 = (n: number) => Math.round(n * 10000) / 10000;
 
-export const today = () => new Date().toISOString().slice(0, 10);
+/** Local calendar date as YYYY-MM-DD (not UTC: in India a UTC date is still "yesterday" until 05:30) */
+export const localDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+export const today = () => localDate(new Date());
 
 export function addDays(days: number) {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return localDate(d);
 }
 
 /** ISO timestamp `days` days (and `hours` hours) in the past */
@@ -41,6 +54,9 @@ export function fmtDateTime(iso?: string) {
   return new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
+/** 2-decimal number in Indian grouping: 339822.3 → "3,39,822.30" */
+export const f2 = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 export function money(n: number, currency = "INR") {
   return `${currency} ${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -50,14 +66,6 @@ export function moneyShort(n: number, currency = "INR") {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency, notation: "compact", maximumFractionDigits: 2 }).format(n);
 }
 
-/**
- * The Quotation ID follows the Enquiry ID: "EQ: AIS-0005-2026" → "QT: AIS-0005-2026".
- * `enquiryLabel` is the label from Settings → Ref Number, which the user can change.
- */
-export function quotationRef(enquiryRef: string, enquiryLabel: string) {
-  const body = enquiryLabel && enquiryRef.startsWith(enquiryLabel) ? enquiryRef.slice(enquiryLabel.length) : enquiryRef;
-  return `QT: ${body.trim()}`;
-}
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const isEmail = (v: string) => EMAIL_RE.test(v.trim());
@@ -72,6 +80,7 @@ export const splitEmails = (v: string) =>
 export interface RefValues {
   company: string;
   client?: string;
+  branch?: string;
   pol?: string;
   pod?: string;
   year: number | string;
@@ -79,8 +88,9 @@ export interface RefValues {
 }
 
 /**
- * Builds a reference number from the pattern chosen in Settings → Ref Number,
- * e.g. parts [company, seq, year] → "EQ: AIS-0005-2026", or [company, pol, seq] with no separator → "AECOK0001".
+ * Builds a reference number from the pattern chosen in Settings → Ref Number Format,
+ * e.g. label "QUO" with parts [company, branch, seq, year] → "QUO-AIS-COK-0005-2026".
+ * A label ending in a space or ": " is followed directly by the number ("EQ: AIS-0005-2026").
  */
 export function buildRef(pattern: RefPattern, v: RefValues) {
   const value = { ...v, seq: String(v.seq).padStart(pattern.digits, "0"), year: String(v.year) };
@@ -88,8 +98,46 @@ export function buildRef(pattern: RefPattern, v: RefValues) {
     .map((p) => value[p])
     .filter(Boolean)
     .join(pattern.separator);
-  return `${pattern.label}${body}`;
+  if (!pattern.label) return body;
+  return /[\s:\-/]$/.test(pattern.label) ? `${pattern.label}${body}` : `${pattern.label}${pattern.separator || "-"}${body}`;
 }
+
+/** First number in a free-text rate such as "1,250" or "280+10+6" (0 when there is none) */
+export const parseRate = (v: string) => Number(v.replace(/,/g, "").split("+")[0].trim()) || 0;
+
+/**
+ * A web address that is safe to open: http(s) only. A bare "www.x.com" gets https://; anything else
+ * (javascript:, data:, relative paths) becomes "".
+ */
+export function safeHttpUrl(v: string) {
+  const t = v.trim();
+  if (!t) return "";
+  try {
+    const u = new URL(/^[a-z][a-z0-9+.-]*:/i.test(t) ? t : `https://${t}`);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.href : "";
+  } catch {
+    return "";
+  }
+}
+
+/** Branch code for reference numbers, falling back to the first letters of the name */
+export const branchCode = (s: Settings, branch?: string) => {
+  const b = s.branches.find((x) => x.name === branch) ?? s.branches[0];
+  return b?.code || b?.name.slice(0, 3).toUpperCase() || "";
+};
+
+/** The default financial year, or the last one listed */
+export const defaultFy = (s: Settings) => (s.financialYears.find((f) => f.isDefault) ?? s.financialYears.at(-1))?.name ?? "";
+
+export const userName = (u: Pick<User, "firstName" | "lastName">) => `${u.firstName} ${u.lastName}`.trim();
+/** Active users' names, for Sales / Operations / Pricing person dropdowns */
+export const userNames = (s: Settings) => s.users.filter((u) => u.active).map(userName);
+
+/** "Address 1, Address 2, City, State, Postal Code, Country" with empty parts left out */
+export const joinAddress = (parts: (string | undefined)[]) => parts.map((p) => p?.trim()).filter(Boolean).join(", ");
+
+/** Stakeholders that can place enquiries and be billed */
+export const customersOnly = (all: Customer[]) => all.filter((c) => (CUSTOMER_TYPES as readonly string[]).includes(c.type) && c.status !== "Inactive");
 
 /** KOCHI-COK-INDIA */
 export function fmtPort(p?: Port) {
@@ -101,14 +149,29 @@ export function volumeCbm(e: Pick<Enquiry, "packages" | "length" | "width" | "he
   return round4((e.packages * e.length * e.width * e.height) / 1_000_000);
 }
 
-/** IATA volumetric weight in kg: packages × L × W × H (cm) / 6000 */
-export function volumetricWeight(e: Pick<Enquiry, "packages" | "length" | "width" | "height">) {
-  return round2((e.packages * e.length * e.width * e.height) / 6000);
+/** Volumetric weight in kg: packages × L × W × H (cm) / divisor (IATA: 6000, configurable in Settings) */
+export function volumetricWeight(e: Pick<Enquiry, "packages" | "length" | "width" | "height">, divisor = 6000) {
+  return round2((e.packages * e.length * e.width * e.height) / (divisor || 6000));
 }
 
-/** Indicative total = higher of (chargeable weight × rate/kg) or minimum charge, plus AWB fee */
+/**
+ * Suggested chargeable weight: the higher of gross and volumetric weight,
+ * rounded up to the step set in Settings (e.g. 0.5 kg). 100 kg gross / 125 kg volumetric → 125 kg.
+ */
+export function suggestedChargeable(e: Pick<Enquiry, "grossWeight" | "packages" | "length" | "width" | "height">, s: Pick<Settings, "volumetricDivisor" | "weightRounding">) {
+  const higher = Math.max(e.grossWeight || 0, volumetricWeight(e, s.volumetricDivisor));
+  return s.weightRounding > 0 ? round2(Math.ceil(higher / s.weightRounding - 1e-9) * s.weightRounding) : round2(higher);
+}
+
+/** Rate per kg for a weight: the highest weight break reached, else the N rate */
+export function rateForWeight(r: Pick<AirlineRate, "ratePerKg" | "slabs">, kg: number) {
+  const slab = [...(r.slabs ?? [])].sort((a, b) => b.minKg - a.minKg).find((x) => x.rate > 0 && kg >= x.minKg);
+  return slab?.rate ?? r.ratePerKg;
+}
+
+/** Indicative total = higher of (chargeable weight × rate/kg) or minimum charge, plus AWB fee and other charges */
 export function estimatedTotal(r: AirlineRate, chargeable: number) {
-  return round2(Math.max(chargeable * r.ratePerKg, r.minCharge) + r.awbFee);
+  return round2(Math.max(chargeable * rateForWeight(r, chargeable), r.minCharge) + r.awbFee + (r.otherCharges ?? 0));
 }
 
 export const isRateValid = (r: AirlineRate) => r.validUntil >= today();
@@ -194,8 +257,14 @@ export function matches(term: string, values: (string | number | undefined)[]) {
   return !t || values.some((v) => v !== undefined && String(v).toLowerCase().includes(t));
 }
 
+/** Job stages after the AWB is executed and before the documents reach the CHA */
+export const DOCUMENT_STAGE_STATUSES: readonly JobStatus[] = ["Pending Documents", "Documents Uploaded", "CHA Dispatch Pending"];
+
+/** Statuses reached once a Booking/Job exists */
+export const JOB_STAGE_STATUSES: readonly EnquiryStatus[] = JOB_STATUSES.filter((s) => s !== "Cancelled");
+
 /** From the client's confirmation onwards the enquiry is fixed: the quotation and booking are built on it */
-const LOCKED_STATUSES: readonly EnquiryStatus[] = ["Waiting for Shipment Date", "Booking in Progress", "Booking Confirmed", "Docs Received", "Job Created", "AWB Created"];
+const LOCKED_STATUSES: readonly EnquiryStatus[] = ["Waiting for Shipment Date", "Booking in Progress", "Booking Confirmed", ...JOB_STAGE_STATUSES];
 export const isEnquiryLocked = (e: Pick<Enquiry, "status">) => LOCKED_STATUSES.includes(e.status);
 
 /** Mail Box tags: customer mails are new enquiries, airline mails are responses to rate requests */
@@ -205,12 +274,17 @@ export const MAIL_TAG = {
 } as const;
 
 export const CUSTOMER_TYPE_TONE: Record<CustomerType, string> = {
-  "Shipper/Receiver": "bg-sky-50 text-sky-800 ring-sky-200",
-  "Forwarder/Logistics": "bg-violet-50 text-violet-800 ring-violet-200",
+  Logistics: "bg-violet-50 text-violet-800 ring-violet-200",
+  "Freight Forwarders": "bg-indigo-50 text-indigo-800 ring-indigo-200",
+  Shipper: "bg-sky-50 text-sky-800 ring-sky-200",
+  Consignee: "bg-teal-50 text-teal-800 ring-teal-200",
+  Vendors: "bg-slate-100 text-slate-700 ring-slate-200",
+  Agents: "bg-amber-50 text-amber-800 ring-amber-200",
+  CHA: "bg-rose-50 text-rose-800 ring-rose-200",
 };
 
 /** Enquiry statuses that count as converted into a booking */
-export const CONVERTED_STATUSES: readonly EnquiryStatus[] = ["Booking Confirmed", "Docs Received", "Job Created", "AWB Created"];
+export const CONVERTED_STATUSES: readonly EnquiryStatus[] = ["Booking Confirmed", ...JOB_STAGE_STATUSES];
 
 /** Largest file whose content is kept (localStorage holds only a few MB in total) */
 export const MAX_KEPT_FILE = 1024 * 1024;
@@ -272,6 +346,26 @@ export function amountInWords(amount: number) {
   return parts.join(" ");
 }
 
+/** Indian numbering: 339822 → "Three Lakhs Thirty-Nine Thousand Eight Hundred and Twenty-Two" */
+export function amountInWordsIndian(amount: number) {
+  const scales: [number, string, string][] = [
+    [1e7, "Crore", "Crores"],
+    [1e5, "Lakh", "Lakhs"],
+    [1e3, "Thousand", "Thousand"],
+  ];
+  let n = Math.floor(Math.abs(amount));
+  const parts: string[] = [];
+  for (const [size, one, many] of scales) {
+    if (n >= size) {
+      const k = Math.floor(n / size);
+      parts.push(`${amountInWordsIndian(k)} ${k === 1 ? one : many}`);
+      n %= size;
+    }
+  }
+  if (n || !parts.length) parts.push(below1000(n) || "Zero");
+  return `${amount < 0 ? "Minus " : ""}${parts.join(" ")}`;
+}
+
 /** "Laps": time spent in the current status */
 export function laps(iso: string) {
   const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -285,13 +379,15 @@ export function buildQuoteLines(chargeable: number, rate: AirlineRate | undefine
     gstPercent: settings.gstPercent,
     ...l,
   });
+  const perKg = rate ? rateForWeight(rate, chargeable) : 0;
   const freight =
-    rate && chargeable * rate.ratePerKg < rate.minCharge
+    rate && chargeable * perKg < rate.minCharge
       ? line({ group: "Airline", particulars: "AIR FREIGHT CHARGES (MINIMUM)", unit: "Per shipment", qty: 1, rate: rate.minCharge })
-      : line({ group: "Airline", particulars: "AIR FREIGHT CHARGES", unit: "Per kg", qty: chargeable, rate: rate?.ratePerKg ?? 0 });
+      : line({ group: "Airline", particulars: "AIR FREIGHT CHARGES", unit: "Per kg", qty: chargeable, rate: perKg });
   return [
     freight,
     line({ group: "Airline", particulars: "AIRWAY BILL FEES - AWA", unit: "Per shipment", qty: 1, rate: rate?.awbFee ?? 0 }),
+    ...(rate?.otherCharges ? [line({ group: "Airline", particulars: "OTHER CHARGES", unit: "Per shipment", qty: 1, rate: rate.otherCharges })] : []),
     ...settings.agencyCharges.map((c) =>
       line({ group: "Agency", particulars: c.particulars, unit: c.unit, qty: c.unit === "Per kg" ? chargeable : 1, rate: c.rate, remarks: c.remarks }),
     ),
@@ -317,7 +413,7 @@ export function quoteTotals(q: Pick<Quotation, "lines" | "roe">) {
   };
 }
 
-/** Progress steps shown on the enquiry page */
+/** Progress steps shown on the enquiry page (FRD: Add Enquiry → … → Complete) */
 export const STEPS = [
   "Enquiry",
   "Airline Rates",
@@ -325,9 +421,12 @@ export const STEPS = [
   "Client Confirmation",
   "Shipment Date",
   "Booking",
-  "Invoice & Packing List",
-  "Shipment Job",
+  "Job",
   "AWB",
+  "Upload Documents",
+  "Merge Documents",
+  "Dispatch to CHA",
+  "Complete",
 ] as const;
 
 const STEP_INDEX: Record<EnquiryStatus, number> = {
@@ -338,14 +437,19 @@ const STEP_INDEX: Record<EnquiryStatus, number> = {
   "Waiting for Shipment Date": 4,
   "Booking in Progress": 5,
   "Booking Confirmed": 6,
-  "Docs Received": 7,
-  "Job Created": 8,
-  "AWB Created": 9,
+  "AWB In Progress": 7,
+  "Pending Documents": 8,
+  "Documents Uploaded": 9,
+  "CHA Dispatch Pending": 10,
+  "Booking Completed": 11,
+  Departed: 12,
+  "Cargo In Transit": 12,
+  "On Hold": -1,
   Cancelled: -1,
   Lost: -1,
 };
 
-/** Index of the step in progress; earlier steps are complete. -1 when cancelled/lost. */
+/** Index of the step in progress; earlier steps are complete. -1 when cancelled, lost or on hold. */
 export const currentStep = (status: EnquiryStatus) => STEP_INDEX[status];
 
 // Few hues, each with one meaning: blue = new, amber = waiting on someone else,
@@ -368,24 +472,105 @@ export const STATUS_TONE: Record<EnquiryStatus | QuotationStatus, string> = {
   "Waiting for Shipment Date": TONE.waiting,
   "Booking in Progress": TONE.action,
   "Booking Confirmed": TONE.done,
-  "Docs Received": TONE.done,
-  "Job Created": TONE.done,
-  "AWB Created": TONE.neutral,
+  "AWB In Progress": TONE.action,
+  "Pending Documents": TONE.action,
+  "Documents Uploaded": TONE.action,
+  "CHA Dispatch Pending": TONE.action,
+  "Booking Completed": TONE.done,
+  Departed: TONE.done,
+  "Cargo In Transit": TONE.done,
+  "On Hold": TONE.waiting,
   Cancelled: TONE.closed,
   Lost: TONE.closed,
 };
 
-/** Dashboard slides A–F, as defined in the FRD */
+export const RESERVATION_TONE: Record<ReservationStatus, string> = {
+  Draft: TONE.neutral,
+  Reserved: TONE.new,
+  "Ready for Booking": TONE.action,
+  "Booking In Progress": TONE.waiting,
+  "Booking Confirmed": TONE.done,
+  "On Hold": TONE.waiting,
+  Rescheduled: TONE.new,
+  Cancelled: TONE.closed,
+  Departed: TONE.done,
+};
+
+export const AWB_TONE: Record<AwbStatus, string> = {
+  Draft: TONE.neutral,
+  "Draft AWB Send": TONE.waiting,
+  "AWB Executed": TONE.done,
+  Cancelled: TONE.closed,
+};
+
+export const INVOICE_TONE: Record<InvoiceStatus, string> = {
+  Draft: TONE.neutral,
+  "Awaiting Confirmation": TONE.waiting,
+  Generated: TONE.action,
+  Completed: TONE.done,
+  Cancelled: TONE.closed,
+};
+
+export const BILL_TONE: Record<BillStatus, string> = {
+  Draft: TONE.neutral,
+  "Proforma INV Send": TONE.waiting,
+  Approved: TONE.done,
+  "Sent / Issued": TONE.new,
+  Overdue: TONE.closed,
+  "Partially Paid": TONE.waiting,
+  Paid: TONE.done,
+  Issued: TONE.done,
+  Cancelled: TONE.closed,
+};
+
+/** Dashboard slides A–H, as defined in the FRD */
 export const STAGES = [
-  { key: "pending", label: "Enquiries Pending to Confirm", hint: "Received, yet to revert with rates", statuses: ["New Enquiry", "Rate Received"] },
+  { key: "pending", label: "Enquiries Pending to Complete", hint: "Received, yet to revert with rates", statuses: ["New Enquiry", "Rate Received"] },
   { key: "rates", label: "Rates Yet to Receive", hint: "Forwarded to airlines", statuses: ["Rate Requested"] },
   { key: "quoted", label: "Quotation Pending to Confirm", hint: "Sent to client", statuses: ["Quote Confirmation Pending"] },
-  { key: "date", label: "Waiting for Shipment Date", hint: "Rate confirmed, date pending", statuses: ["Waiting for Shipment Date"] },
-  { key: "booking", label: "Waiting for Booking Confirmation", hint: "Booking in progress", statuses: ["Booking in Progress"] },
-  { key: "booked", label: "Booking Confirmed", hint: "Booked with airline", statuses: ["Booking Confirmed", "Docs Received", "Job Created", "AWB Created"] },
+  { key: "date", label: "Waiting for Shipment Date", hint: "Quotation approved, date pending", statuses: ["Waiting for Shipment Date"] },
+  { key: "booking", label: "Waiting for Booking Confirmation", hint: "Date confirmed, airline to confirm", statuses: ["Booking in Progress"] },
+  { key: "booked", label: "Booking Confirmed", hint: "Flight booked", statuses: ["Booking Confirmed"] },
+  { key: "awb", label: "AWB Pending", hint: "Job created, AWB not executed", statuses: ["AWB In Progress"] },
+  { key: "docs", label: "Document Upload Pending", hint: "Upload, merge & dispatch to CHA", statuses: ["Pending Documents", "Documents Uploaded", "CHA Dispatch Pending"] },
 ] as const satisfies readonly { key: string; label: string; hint: string; statuses: readonly EnquiryStatus[] }[];
 
 export type StageKey = (typeof STAGES)[number]["key"];
+
+/** Line value in INR: qty × rate × exchange rate */
+export const billLineValue = (l: BillLine) => round2(l.qty * l.rate * (l.exRate || 1));
+
+/**
+ * Bill totals. IGST bills carry each line's whole GST rate as IGST; CGST+SGST bills split it in half.
+ * The total is rounded to the nearest rupee and the difference shown as Round Off.
+ */
+export function billTotals(b: Pick<Bill, "lines" | "taxMode" | "gstPercent" | "payments">) {
+  const taxable = round2(b.lines.filter((l) => l.taxable).reduce((s, l) => s + billLineValue(l), 0));
+  const nonTaxable = round2(b.lines.filter((l) => !l.taxable).reduce((s, l) => s + billLineValue(l), 0));
+  // Each line carries its own rate, so a 5% line stays at 5% next to 18% lines
+  const gst = round2(b.lines.reduce((s, l) => s + billLineTax(l, b.gstPercent), 0));
+  const igst = b.taxMode === "IGST" ? gst : 0;
+  const cgst = b.taxMode === "IGST" ? 0 : round2(gst / 2);
+  const sgst = b.taxMode === "IGST" ? 0 : round2(gst - cgst);
+  const exact = round2(taxable + nonTaxable + igst + cgst + sgst);
+  // Round half away from zero so a credit note mirrors its invoice exactly (-1180.5 → -1181, like 1180.5 → 1181)
+  const total = Math.sign(exact) * Math.round(Math.abs(exact));
+  const received = round2(b.payments.reduce((s, p) => s + p.amount, 0));
+  return { taxable, nonTaxable, igst, cgst, sgst, exact, roundOff: round2(total - exact), total, received, balance: round2(total - received) };
+}
+
+/**
+ * Bills that can no longer be edited. An issued tax invoice is final (GST): corrections go through
+ * cancelling it, which raises a credit note, and approving a fresh proforma.
+ */
+export const isBillLocked = (b: Pick<Bill, "kind" | "status">) =>
+  b.kind === "Invoice" || b.status === "Cancelled" || b.status === "Approved" || (b.kind === "Credit Note" && b.status === "Issued");
+
+/** GST per line, for the printed bill */
+export const billLineTax = (l: BillLine, billGst: number) => round2((billLineValue(l) * billLineRate(l, billGst)) / 100);
+
+/** GST rate of a bill line: its own rate, or the bill's for older bills; 0 when not taxable */
+export const billLineRate = (l: BillLine, billGst: number) => (l.taxable ? (l.gstPercent ?? billGst) : 0);
 
 /** Copy of an object without the given keys */
 export function omit<T extends object, K extends keyof T>(obj: T, keys: K[]): Omit<T, K> {
@@ -397,3 +582,31 @@ export function omit<T extends object, K extends keyof T>(obj: T, keys: K[]): Om
 export function cn(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(" ");
 }
+
+// ---- Mail bodies: plain text (older mails) or HTML from the rich-text editor ----
+
+/** True when a mail body was written in the rich-text editor */
+export const isHtml = (s: string) => /^\s*<(p|div|h[1-6]|ul|ol|blockquote|img|br|table)[\s>/]/i.test(s);
+
+export const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/** Plain text → paragraphs, keeping line breaks */
+export const textToHtml = (s: string) =>
+  s
+    .split(/\n{2,}/)
+    .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+
+/** HTML → plain text for search and previews */
+export const htmlToText = (s: string) =>
+  isHtml(s)
+    ? s
+        .replace(/<(br|\/p|\/div|\/li|\/h[1-6])[^>]*>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, "&")
+        .trim()
+    : s;

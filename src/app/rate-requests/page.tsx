@@ -5,7 +5,7 @@ import { useState } from "react";
 import { BellRing, Hourglass, MailCheck, Send } from "lucide-react";
 import { useLookups, useStore } from "@/lib/store";
 import { DATE_RANGES, type DateRange, fmtDateTime, inRange, matches } from "@/lib/utils";
-import { Badge, Card, FilterBar, FilterSelect, type KpiDef, KpiFilters, kpiTest, NoResults, PageHeader, ResetFilters, RowMenu, SearchField, Table, linkCls } from "@/components/ui";
+import { Badge, Card, FilterBar, FilterSelect, type KpiDef, KpiFilters, kpiTest, NoResults, PageHeader, ResetFilters, RowActions, SearchField, Table, linkCls } from "@/components/ui";
 import { RouteCell } from "@/components/workflow";
 
 export default function RateRequestsPage() {
@@ -80,6 +80,7 @@ export default function RateRequestsPage() {
           <Table>
             <thead>
               <tr>
+                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Enquiry ID</th>
                 <th>Customer</th>
                 <th>Route</th>
@@ -87,12 +88,14 @@ export default function RateRequestsPage() {
                 <th>Requested</th>
                 <th>Reminders</th>
                 <th>Reply</th>
-                <th className="w-14 text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.map(({ e, r }) => (
                 <tr key={`${e.id}-${r.airlineId}`} className="hover:bg-slate-50">
+                  <td className="whitespace-nowrap">
+                    <RowActions label={`Actions for ${e.ref}`} items={[{ label: "View enquiry", href: `/enquiries/${e.id}` }]} />
+                  </td>
                   <td className="whitespace-nowrap">
                     <Link href={`/enquiries/${e.id}`} className={linkCls}>
                       {e.ref}
@@ -111,9 +114,6 @@ export default function RateRequestsPage() {
                     ) : (
                       <Badge className="bg-amber-50 text-amber-800 ring-amber-200">Awaiting reply</Badge>
                     )}
-                  </td>
-                  <td className="text-center">
-                    <RowMenu label={`Actions for ${e.ref}`} items={[{ label: "View enquiry", href: `/enquiries/${e.id}` }]} />
                   </td>
                 </tr>
               ))}

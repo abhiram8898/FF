@@ -1,8 +1,38 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
-import { ArrowLeft, Inbox, MoreHorizontal, RefreshCw, Search, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRightLeft,
+  Ban,
+  BellRing,
+  CalendarPlus,
+  CalendarRange,
+  ClipboardList,
+  Combine,
+  Copy,
+  ExternalLink,
+  Eye,
+  FileStack,
+  FileText,
+  Inbox,
+  Mail,
+  MailOpen,
+  MoreHorizontal,
+  Package,
+  PackagePlus,
+  Pencil,
+  Power,
+  RefreshCw,
+  Search,
+  Send,
+  Trash2,
+  Upload,
+  X,
+  Zap,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { EnquiryStatus, QuotationStatus } from "@/lib/types";
 import { STATUS_TONE, cn } from "@/lib/utils";
@@ -15,7 +45,7 @@ export const buttonCls = (variant: Variant, size: Size, className?: string) =>
     "inline-flex items-center justify-center gap-1.5 rounded-lg font-medium whitespace-nowrap transition-colors",
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500",
     "disabled:cursor-not-allowed disabled:opacity-50",
-    size === "sm" ? "h-8 px-3 text-xs" : "h-9 px-3 text-sm",
+    size === "sm" ? "h-7 px-2.5 text-xs" : "h-9 px-3 text-sm sm:h-8",
     variant === "primary" && "bg-navy-900 text-white shadow-sm hover:bg-navy-700",
     variant === "secondary" && "bg-white text-slate-700 shadow-xs ring-1 ring-slate-300 ring-inset hover:bg-slate-50",
     variant === "ghost" && "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
@@ -61,7 +91,7 @@ export function Card({
   return (
     <section className={cn("min-w-0 rounded-xl border border-slate-200 bg-white shadow-xs", className)}>
       {(title || actions) && (
-        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-3">
+        <header className="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-1.5">
           <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
           {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </header>
@@ -85,14 +115,14 @@ export function PageHeader({
   return (
     <div className="mb-3">
       {back && (
-        <Link href={back.href} className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800">
+        <Link href={back.href} className="mb-1 inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800">
           <ArrowLeft size={13} /> {back.label}
         </Link>
       )}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900">{title}</h1>
-          {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
+          <h1 className="text-lg leading-7 font-semibold tracking-tight text-slate-900">{title}</h1>
+          {subtitle && <p className="text-sm leading-5 text-slate-500">{subtitle}</p>}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
@@ -121,7 +151,7 @@ export function Field({
 }
 
 const inputCls =
-  "h-9 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-xs outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-500";
+  "h-9 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-2.5 text-sm sm:h-8 text-slate-900 shadow-xs outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-500";
 
 export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input className={cn(inputCls, className)} {...props} />;
@@ -133,6 +163,59 @@ export function Select({ className, ...props }: React.SelectHTMLAttributes<HTMLS
 
 export function Textarea({ className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea className={cn(inputCls, "h-auto py-2", className)} {...props} />;
+}
+
+const SPINNER_SIZES = { xs: "size-3.5 border-2", sm: "size-4 border-2", md: "size-6 border-2", lg: "size-9 border-[3px]" };
+const SPINNER_TONES = { brand: "border-slate-200 border-t-brand-600", light: "border-white/25 border-t-white" };
+
+/** Spinning ring for anything that is loading or working; `light` for dark backgrounds */
+export function Spinner({ size = "md", tone = "brand", className }: { size?: keyof typeof SPINNER_SIZES; tone?: keyof typeof SPINNER_TONES; className?: string }) {
+  return <span className={cn("inline-block shrink-0 animate-spin rounded-full", SPINNER_SIZES[size], SPINNER_TONES[tone], className)} aria-hidden />;
+}
+
+/** Centred spinner with a message; `fullScreen` for app start-up, otherwise it fills the page area */
+export function PageLoader({ label = "Loading…", fullScreen }: { label?: string; fullScreen?: boolean }) {
+  return (
+    <div role="status" aria-live="polite" className={cn("grid place-items-center", fullScreen ? "h-screen bg-slate-50" : "min-h-[50vh]")}>
+      <div className="loader-in flex flex-col items-center gap-3">
+        <Spinner size="lg" />
+        <span className="text-sm text-slate-500">{label}</span>
+      </div>
+    </div>
+  );
+}
+
+/** Full-page message for "not found" and error screens: icon, code, title, explanation and buttons */
+export function StatusPage({
+  icon: Icon,
+  tone = "brand",
+  code,
+  title,
+  children,
+  actions,
+  className,
+}: {
+  icon: LucideIcon;
+  tone?: "brand" | "red";
+  className?: string;
+  code?: string;
+  title: string;
+  children: React.ReactNode;
+  actions: React.ReactNode;
+}) {
+  return (
+    <div className={cn("grid min-h-[60vh] place-items-center px-3 py-10", className)}>
+      <div className="status-in flex max-w-md flex-col items-center text-center">
+        <span className={cn("grid size-14 place-items-center rounded-full ring-8", tone === "red" ? "bg-red-50 text-red-600 ring-red-50/50" : "bg-brand-50 text-brand-600 ring-brand-50/50")}>
+          <Icon size={26} aria-hidden />
+        </span>
+        {code && <p className="mt-4 text-xs font-semibold tracking-widest text-slate-400 uppercase">{code}</p>}
+        <h1 className={cn("text-xl font-semibold text-slate-900", code ? "mt-1" : "mt-4")}>{title}</h1>
+        <div className="mt-2 text-sm text-slate-500">{children}</div>
+        <div className="mt-5 flex flex-wrap justify-center gap-2">{actions}</div>
+      </div>
+    </div>
+  );
 }
 
 export function Badge({ children, className }: { children: React.ReactNode; className?: string }) {
@@ -161,6 +244,7 @@ export function Modal({
   children,
   footer,
   wide,
+  confirmClose,
 }: {
   open: boolean;
   onClose: () => void;
@@ -168,11 +252,16 @@ export function Modal({
   children: React.ReactNode;
   footer?: React.ReactNode;
   wide?: boolean;
+  /** When set (e.g. the form has unsaved changes), closing by overlay click, Escape or × asks this question first */
+  confirmClose?: string | false;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
+  const requestClose = () => {
+    if (!confirmClose || window.confirm(confirmClose)) onClose();
+  };
+  const onCloseRef = useRef(requestClose);
   useEffect(() => {
-    onCloseRef.current = onClose;
+    onCloseRef.current = requestClose;
   });
 
   useEffect(() => {
@@ -209,44 +298,94 @@ export function Modal({
 
   if (!open) return null;
   return (
-    <div className="modal-overlay fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-3 sm:p-3" onMouseDown={onClose}>
+    <div className="modal-overlay fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-3 sm:p-3" onMouseDown={requestClose}>
       <div
         ref={dialogRef}
         tabIndex={-1}
-        className={cn("my-auto w-full rounded-xl bg-white shadow-2xl outline-none", wide ? "max-w-4xl" : "max-w-lg")}
+        className={cn("modal-panel my-auto w-full rounded-xl bg-white shadow-2xl outline-none", wide ? "max-w-4xl 2xl:max-w-5xl" : "max-w-lg")}
         onMouseDown={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label={title}
       >
-        <header className="no-print flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-3">
+        <header className="no-print flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-2">
           <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-          <button onClick={onClose} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800" aria-label="Close">
+          <button onClick={requestClose} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800" aria-label="Close">
             <X size={16} />
           </button>
         </header>
         <div className="modal-body p-3">{children}</div>
-        {footer && <footer className="no-print flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-3 py-3">{footer}</footer>}
+        {footer && <footer className="no-print flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-3 py-2.5">{footer}</footer>}
       </div>
     </div>
   );
 }
 
+/** Warns before the tab is closed or reloaded while a form has unsaved changes */
+export function useUnsavedChanges(dirty: boolean) {
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+}
+
+/** Question asked before throwing away unsaved changes */
+export const DISCARD_CHANGES = "Discard your unsaved changes?";
+
 export function Empty({ children, action, icon: Icon = Inbox }: { children: React.ReactNode; action?: React.ReactNode; icon?: React.ElementType }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-3 text-center text-sm text-slate-500">
-      <Icon size={22} className="text-slate-400" aria-hidden />
+    <div className="flex flex-col items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-4 text-center text-sm text-slate-500">
+      <Icon size={20} className="text-slate-400" aria-hidden />
       <div>{children}</div>
       {action}
     </div>
   );
 }
 
-export function Table({ children }: { children: React.ReactNode }) {
+/**
+ * Copies each column heading into its cells' data-label, so phones can show the table as labelled cards.
+ * Labels come from the last header row; body rowSpan isn't followed, so stack={false} for such tables.
+ */
+function labelCells(table: HTMLTableElement) {
+  const headRows = table.tHead?.rows;
+  const heads: string[] = [];
+  for (const th of headRows?.[headRows.length - 1]?.cells ?? []) for (let i = 0; i < th.colSpan; i++) heads.push(th.textContent?.trim() ?? "");
+  for (const body of table.tBodies)
+    for (const tr of body.rows) {
+      let col = 0;
+      for (const cell of tr.cells) {
+        // A cell spanning the whole row (empty state, notes) gets no label
+        const label = cell.colSpan >= heads.length && heads.length > 1 ? "" : (heads[col] ?? "");
+        if (cell.getAttribute("data-label") !== label) cell.setAttribute("data-label", label);
+        col += cell.colSpan;
+      }
+    }
+}
+
+/**
+ * Data table. Scrolls sideways when it doesn't fit; on phones each row becomes a labelled card
+ * (see .table-stack in globals.css). Pass stack={false} to keep the scrolling table on phones.
+ */
+export function Table({ children, stack = true }: { children: React.ReactNode; stack?: boolean }) {
+  const ref = useRef<HTMLTableElement>(null);
+  useEffect(() => {
+    const table = ref.current;
+    if (!table || !stack) return;
+    labelCells(table);
+    // Rows come and go with filters and sorting; label new cells as they appear
+    const observer = new MutationObserver(() => labelCells(table));
+    observer.observe(table, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, [stack]);
   return (
     // `relative` keeps absolutely positioned children (e.g. sr-only labels) inside the scroll area
     <div className="relative overflow-x-auto">
-      <table className="w-full text-left text-sm [&_tbody_tr]:border-t [&_tbody_tr]:border-slate-100 [&_td]:px-3 [&_td]:py-2.5 [&_th]:px-3 [&_th]:py-2.5 [&_th]:text-xs [&_th]:font-medium [&_th]:whitespace-nowrap [&_th]:text-slate-500 [&_thead]:bg-slate-50">
+      <table ref={ref} className={cn(stack && "table-stack", "w-full text-left text-sm [&_tbody_tr]:border-t [&_tbody_tr]:border-slate-100 [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2 [&_th]:text-xs [&_th]:font-medium [&_th]:whitespace-nowrap [&_th]:text-slate-500 [&_thead]:bg-slate-50")}>
         {children}
       </table>
     </div>
@@ -261,7 +400,7 @@ export function KeyValue({ items, cols = 3, compact }: { items: [string, React.R
         "grid grid-cols-2",
         cols >= 3 && "sm:grid-cols-3",
         cols === 4 && "xl:grid-cols-4",
-        compact ? "gap-x-3 gap-y-2 text-xs" : "gap-x-3 gap-y-3 text-sm",
+        compact ? "gap-x-3 gap-y-1.5 text-xs" : "gap-x-4 gap-y-2.5 text-sm",
       )}
     >
       {items.map(([k, v]) => (
@@ -284,7 +423,7 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: readon
           aria-selected={value === t}
           onClick={() => onChange(t)}
           className={cn(
-            "-mb-px border-b-2 px-3 py-2 text-sm font-medium whitespace-nowrap focus-visible:outline-2 focus-visible:outline-brand-500",
+            "-mb-px border-b-2 px-3 py-1.5 text-sm font-medium whitespace-nowrap focus-visible:outline-2 focus-visible:outline-brand-500",
             value === t ? "border-brand-600 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-800",
           )}
         >
@@ -293,6 +432,62 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: readon
       ))}
     </div>
   );
+}
+
+/** Tabs that are separate routes, e.g. Jobs → Enquiries | Quotations | Job/Booking */
+export function LinkTabs({ tabs, label }: { tabs: { href: string; label: string; count?: number }[]; label: string }) {
+  const pathname = usePathname();
+  return (
+    <nav aria-label={label} className="mb-3 flex gap-1 overflow-x-auto border-b border-slate-200">
+      {tabs.map((t) => {
+        const active = pathname === t.href;
+        return (
+          <Link
+            key={t.href}
+            href={t.href}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "-mb-px flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-sm font-medium whitespace-nowrap focus-visible:outline-2 focus-visible:outline-brand-500",
+              active ? "border-brand-600 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-800",
+            )}
+          >
+            {t.label}
+            {t.count !== undefined && <span className={cn("rounded-full px-1.5 text-xs", active ? "bg-brand-50 text-brand-700" : "bg-slate-100 text-slate-500")}>{t.count}</span>}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/** Coloured status pill for any status list that has a tone map */
+export function ToneBadge({ status, tones }: { status: string; tones: Record<string, string> }) {
+  return <Badge className={tones[status]}>{status}</Badge>;
+}
+
+/** Yes / No switch */
+export function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:opacity-50",
+        checked ? "bg-brand-600" : "bg-slate-300",
+      )}
+    >
+      <span className={cn("inline-block size-4 rounded-full bg-white shadow transition-transform", checked ? "translate-x-4.5" : "translate-x-0.5")} />
+    </button>
+  );
+}
+
+/** Section heading inside a form card */
+export function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">{children}</h3>;
 }
 
 const KPI_TONES = {
@@ -331,17 +526,17 @@ export function Kpi({
 }) {
   const body = (
     <>
-      <span className={cn("grid size-10 shrink-0 place-items-center rounded-full", KPI_TONES[tone])}>
-        <Icon size={18} aria-hidden />
+      <span className={cn("grid size-9 shrink-0 place-items-center rounded-full", KPI_TONES[tone])}>
+        <Icon size={17} aria-hidden />
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-xl leading-tight font-semibold text-slate-900 tabular-nums">{value}</span>
+        <span className="block truncate text-lg leading-6 font-semibold text-slate-900 tabular-nums">{value}</span>
         <span className="block text-xs leading-snug text-slate-500">{label}</span>
-        {hint && <span className="block text-[11px] leading-snug text-slate-400">{hint}</span>}
+        {hint && <span className="block text-xs leading-snug text-slate-400">{hint}</span>}
       </span>
     </>
   );
-  const cls = "flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xs";
+  const cls = "flex min-w-0 items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-xs";
   const interactive = "transition-colors hover:border-brand-200 hover:bg-brand-50/40 focus-visible:outline-2 focus-visible:outline-brand-500";
   if (onClick) {
     return (
@@ -367,7 +562,7 @@ const KPI_COLS = {
 };
 
 export function KpiGrid({ cols = 3, children }: { cols?: keyof typeof KPI_COLS; children: React.ReactNode }) {
-  return <div className={cn("mb-3 grid gap-3", KPI_COLS[cols])}>{children}</div>;
+  return <div className={cn("stagger-in mb-3 grid gap-3", KPI_COLS[cols])}>{children}</div>;
 }
 
 /** A KPI card that filters the page's list. Without `test` the card means "everything" and clears the filter. */
@@ -422,19 +617,19 @@ export function FilterBar({ children }: { children: React.ReactNode }) {
 export function SearchField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <div className="relative min-w-56 flex-[2_1_16rem]">
-      <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-slate-400" aria-hidden />
-      <Input placeholder={placeholder ?? `${label}…`} aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} className="h-10 pl-9" />
+      <Search size={15} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" aria-hidden />
+      <Input placeholder={placeholder ?? `${label}…`} aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} className="pl-8" />
     </div>
   );
 }
 
 export function FilterSelect({ label, className, ...props }: React.SelectHTMLAttributes<HTMLSelectElement> & { label: string }) {
-  return <Select aria-label={label} className={cn("h-10 flex-[1_1_9rem]", className)} {...props} />;
+  return <Select aria-label={label} className={cn("flex-[1_1_9rem]", className)} {...props} />;
 }
 
 export function ResetFilters({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
   return (
-    <Button variant="secondary" onClick={onClick} aria-label="Reset filters" title="Reset filters" className="h-10 w-10 px-0" disabled={disabled}>
+    <Button variant="secondary" onClick={onClick} aria-label="Reset filters" title="Reset filters" className="w-9 px-0 sm:w-8" disabled={disabled}>
       <RefreshCw size={16} aria-hidden />
     </Button>
   );
@@ -462,7 +657,7 @@ export function NoResults({ filtered, onClear, children }: { filtered: boolean; 
 /** Amber "fog" message used for soft warnings that keep the user on the screen */
 export function Fog({ children, onClose }: { children: React.ReactNode; onClose?: () => void }) {
   return (
-    <div role="alert" className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+    <div role="alert" className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
       <div className="flex-1">{children}</div>
       {onClose && (
         <button onClick={onClose} className="rounded p-0.5 text-amber-700 hover:text-amber-900" aria-label="Dismiss">
@@ -473,92 +668,134 @@ export function Fog({ children, onClose }: { children: React.ReactNode; onClose?
   );
 }
 
-type MenuItem = { label: string; href?: string; onSelect?: () => void };
+export type RowAction = {
+  label: string;
+  href?: string;
+  onSelect?: () => void;
+  /** Defaults from the label (see ACTION_STYLES) */
+  icon?: LucideIcon;
+  /** Defaults from the label; delete / cancel are red */
+  tone?: ActionTone;
+};
+
+/** One colour per kind of action, so the same action looks the same in every table */
+const ACTION_TONES = {
+  view: "bg-sky-50 text-sky-600 ring-sky-200 hover:bg-sky-100 hover:text-sky-700",
+  edit: "bg-amber-50 text-amber-600 ring-amber-200 hover:bg-amber-100 hover:text-amber-700",
+  copy: "bg-violet-50 text-violet-600 ring-violet-200 hover:bg-violet-100 hover:text-violet-700",
+  convert: "bg-emerald-50 text-emerald-600 ring-emerald-200 hover:bg-emerald-100 hover:text-emerald-700",
+  link: "bg-indigo-50 text-indigo-600 ring-indigo-200 hover:bg-indigo-100 hover:text-indigo-700",
+  status: "bg-teal-50 text-teal-600 ring-teal-200 hover:bg-teal-100 hover:text-teal-700",
+  act: "bg-orange-50 text-orange-600 ring-orange-200 hover:bg-orange-100 hover:text-orange-700",
+  docs: "bg-cyan-50 text-cyan-600 ring-cyan-200 hover:bg-cyan-100 hover:text-cyan-700",
+  neutral: "bg-slate-50 text-slate-600 ring-slate-200 hover:bg-slate-100 hover:text-slate-800",
+  danger: "bg-red-50 text-red-600 ring-red-200 hover:bg-red-100 hover:text-red-700",
+};
+type ActionTone = keyof typeof ACTION_TONES;
+
+/** Icon and colour for each row action, matched on the label (first match wins, so specific labels come first) */
+const ACTION_STYLES: [RegExp, LucideIcon, ActionTone][] = [
+  [/^edit/i, Pencil, "edit"],
+  [/convert to reservation/i, CalendarPlus, "convert"],
+  [/convert to job/i, PackagePlus, "convert"],
+  [/enquiry/i, ClipboardList, "link"],
+  [/quotation/i, FileText, "link"],
+  [/reservation/i, CalendarRange, "link"],
+  [/\b(job|booking)\b(?! portal)/i, Package, "link"],
+  [/manage documents/i, FileStack, "docs"],
+  [/upload/i, Upload, "docs"],
+  [/merge/i, Combine, "docs"],
+  [/dispatch/i, Send, "docs"],
+  [/booking portal/i, ExternalLink, "neutral"],
+  [/^email|mail desk/i, Mail, "neutral"],
+  [/read email/i, MailOpen, "view"],
+  [/status/i, ArrowRightLeft, "status"],
+  [/reminder/i, BellRing, "status"],
+  [/make (in)?active/i, Power, "neutral"],
+  [/take action/i, Zap, "act"],
+  [/duplicate/i, Copy, "copy"],
+  [/delete/i, Trash2, "danger"],
+  [/cancel/i, Ban, "danger"],
+  [/edit/i, Pencil, "edit"],
+  [/view|open|read/i, Eye, "view"],
+];
+
+const actionStyle = (label: string) => ACTION_STYLES.find(([re]) => re.test(label)) ?? [/./, MoreHorizontal, "neutral" as ActionTone];
 
 /**
- * Row "⋮" menu for tables. Positioned with `fixed` so it isn't clipped by the
- * table's horizontal scroll container.
+ * Row actions for tables, shown as coloured icon buttons (first column). Hovering or focusing
+ * an icon shows its name in a label above it; the label is `fixed` so the table's scroll area
+ * doesn't clip it.
  */
-export function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const close = () => setPos(null);
-
+export function RowActions({ label, items }: { label: string; items: RowAction[] }) {
+  const [tip, setTip] = useState<{ text: string; x: number; y: number; below: boolean } | null>(null);
   useEffect(() => {
-    if (!pos) return;
-    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
-    const onDown = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node) && !buttonRef.current?.contains(e.target as Node)) close();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        close();
-        buttonRef.current?.focus();
-      }
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        e.preventDefault();
-        const items = [...(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
-        const i = items.indexOf(document.activeElement as HTMLElement);
-        items[(i + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
-      }
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("resize", close);
+    if (!tip) return;
+    const hide = () => setTip(null);
+    window.addEventListener("scroll", hide, true);
+    window.addEventListener("resize", hide);
     return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", hide, true);
+      window.removeEventListener("resize", hide);
     };
-  }, [pos]);
-
-  const toggle = () => {
-    if (pos) return close();
-    const r = buttonRef.current!.getBoundingClientRect();
-    const height = items.length * 36 + 8;
-    const top = r.bottom + height + 8 > window.innerHeight ? r.top - height - 4 : r.bottom + 4;
-    setPos({ top, left: Math.max(8, r.right - 176) });
+  }, [tip]);
+  const show = (text: string) => (e: React.SyntheticEvent<HTMLElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    // Under the icon when there's no room above (top of the screen)
+    const below = r.top < 40;
+    setTip({ text, x: r.left + r.width / 2, y: below ? r.bottom + 6 : r.top - 6, below });
   };
-  const itemCls = "block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 focus:bg-slate-100 focus:outline-none";
+  const hide = () => setTip(null);
 
   return (
-    <>
-      <button
-        ref={buttonRef}
-        onClick={toggle}
-        aria-haspopup="menu"
-        aria-expanded={!!pos}
-        aria-label={label}
-        className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-brand-500"
-      >
-        <MoreHorizontal size={16} aria-hidden />
-      </button>
-      {pos && (
-        <div ref={menuRef} role="menu" style={pos} className="fixed z-40 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-          {items.map((it) =>
-            it.href ? (
-              <Link key={it.label} href={it.href} role="menuitem" className={itemCls} onClick={close}>
-                {it.label}
-              </Link>
-            ) : (
-              <button
-                key={it.label}
-                role="menuitem"
-                className={itemCls}
-                onClick={() => {
-                  close();
-                  it.onSelect?.();
-                }}
-              >
-                {it.label}
-              </button>
-            ),
+    <div role="group" aria-label={label} className="flex items-center gap-1">
+      {items.map((it) => {
+        const [, defaultIcon, defaultTone] = actionStyle(it.label);
+        const Icon = it.icon ?? defaultIcon;
+        const cls = cn(
+          "grid size-8 shrink-0 place-items-center rounded-lg ring-1 ring-inset transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-500",
+          ACTION_TONES[it.tone ?? defaultTone],
+        );
+        const props = { "aria-label": it.label, className: cls, onMouseEnter: show(it.label), onMouseLeave: hide, onFocus: show(it.label), onBlur: hide };
+        const icon = <Icon size={16} aria-hidden />;
+        if (it.href && /^(mailto:|https?:)/.test(it.href)) {
+          return (
+            <a key={it.label} href={it.href} {...props}>
+              {icon}
+            </a>
+          );
+        }
+        return it.href ? (
+          <Link key={it.label} href={it.href} {...props}>
+            {icon}
+          </Link>
+        ) : (
+          <button
+            key={it.label}
+            type="button"
+            {...props}
+            onClick={() => {
+              hide();
+              it.onSelect?.();
+            }}
+          >
+            {icon}
+          </button>
+        );
+      })}
+      {tip && (
+        <span
+          role="tooltip"
+          style={{ left: tip.x, top: tip.y }}
+          className={cn(
+            "tooltip-in pointer-events-none fixed z-50 -translate-x-1/2 rounded-md bg-slate-900 px-2 py-1 text-xs font-medium whitespace-nowrap text-white shadow-lg",
+            !tip.below && "-translate-y-full",
           )}
-        </div>
+        >
+          {tip.text}
+          <span className={cn("absolute left-1/2 size-2 -translate-x-1/2 rotate-45 bg-slate-900", tip.below ? "-top-1" : "-bottom-1")} aria-hidden />
+        </span>
       )}
-    </>
+    </div>
   );
 }

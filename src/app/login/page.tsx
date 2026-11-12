@@ -3,9 +3,10 @@
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Eye, EyeOff, FileText, Lock, Mail, Package, Plane, Ship } from "lucide-react";
+import { AlertCircle, ArrowRight, Eye, EyeOff, FileText, KeyRound, Lock, Mail, Package, Plane, Ship } from "lucide-react";
 import { DEMO_CREDENTIALS, useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
+import { Spinner } from "@/components/ui";
 
 const FEATURES = [
   { label: "Air Freight", icon: Plane },
@@ -16,67 +17,116 @@ const FEATURES = [
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen bg-white">
       <Hero />
-      <div className="flex flex-1 flex-col items-center justify-center px-3 py-3 sm:px-3">
-        <Suspense>
-          <LoginCard />
-        </Suspense>
-        <p className="mt-3 text-center text-xs text-slate-400">© {new Date().getFullYear()} FreightTask · Every freight task. One platform.</p>
-      </div>
+      <main className="relative flex min-w-0 flex-1 flex-col px-5 py-8 sm:px-10">
+        {/* Soft tint behind the form on small screens, where the hero is hidden */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-brand-50/70 to-transparent lg:hidden" aria-hidden />
+        <div className="relative flex min-w-0 flex-1 items-center justify-center">
+          <Suspense>
+            <LoginForm />
+          </Suspense>
+        </div>
+        <p className="relative mt-8 text-center text-xs text-slate-400">© {new Date().getFullYear()} FreightTask · Every freight task. One platform.</p>
+      </main>
     </div>
   );
 }
 
-/** Navy welcome panel; hidden on small screens where the card stands alone */
+/** Navy welcome panel with a live-shipment preview; hidden below lg, where the form stands alone */
 function Hero() {
   return (
-    <section className="relative hidden w-[55%] max-w-4xl overflow-hidden bg-gradient-to-br from-navy-900 via-navy-800 to-navy-700 text-white lg:flex lg:flex-col">
-      {/* Decorative layers: grid, gold diagonals and a large faded mark */}
+    <section className="relative hidden w-[52%] max-w-[54rem] overflow-hidden bg-navy-900 text-white lg:flex lg:flex-col">
+      {/* Background: soft brand and gold glows and a dot pattern that fades towards the edges */}
+      <div className="absolute -top-40 -left-32 size-[34rem] rounded-full bg-brand-600/35 blur-3xl" aria-hidden />
+      <div className="absolute -right-32 -bottom-40 size-[28rem] rounded-full bg-brand-400/20 blur-3xl" aria-hidden />
+      <div className="absolute right-24 bottom-24 size-48 rounded-full bg-gold-400/10 blur-3xl" aria-hidden />
       <div
-        className="absolute inset-0 opacity-[0.07]"
-        style={{
-          backgroundImage: "linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)",
-          backgroundSize: "48px 48px",
-        }}
+        className="absolute inset-0 opacity-[0.18] [mask-image:radial-gradient(ellipse_at_center,black_20%,transparent_75%)]"
+        style={{ backgroundImage: "radial-gradient(rgb(255 255 255 / 0.55) 1px, transparent 1px)", backgroundSize: "22px 22px" }}
         aria-hidden
       />
-      <div className="absolute -right-24 -bottom-24 h-[140%] w-40 rotate-[28deg] bg-gradient-to-b from-gold-500/0 via-gold-500/30 to-gold-500/0" aria-hidden />
-      <div className="absolute right-20 -bottom-24 h-[140%] w-10 rotate-[28deg] bg-gradient-to-b from-white/0 via-white/10 to-white/0" aria-hidden />
-      <Image src="/brand/mark-light.png" alt="" width={530} height={345} className="absolute -right-16 bottom-10 w-[420px] opacity-[0.06]" aria-hidden />
 
-      <div className="relative flex flex-1 flex-col justify-between p-3 xl:p-3">
-        <Image src="/brand/logo-light.png" alt="FreightTask" width={1394} height={345} priority className="h-12 w-auto self-start" />
+      <div className="relative flex flex-1 flex-col justify-between p-10 xl:p-14">
+        <Image src="/brand/logo-light.png" alt="FreightTask" width={1394} height={345} priority className="login-rise h-11 w-auto self-start" />
 
-        <div className="max-w-lg">
-          <div className="flex items-center gap-3 text-xs font-semibold tracking-[0.2em] text-brand-100 uppercase">
-            <span className="h-0.5 w-8 bg-gold-500" aria-hidden />
-            Welcome to FreightTask
-          </div>
-          <h1 className="mt-3 text-4xl leading-tight font-semibold tracking-tight xl:text-5xl">
-            Air &amp; Sea Freight
+        <div className="max-w-xl">
+          <span className="login-rise inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-brand-100 backdrop-blur [animation-delay:60ms]">
+            <span className="size-1.5 rounded-full bg-gold-400 shadow-[0_0_8px_2px_rgb(229_177_74/0.6)]" aria-hidden />
+            Air &amp; sea freight forwarding platform
+          </span>
+          <h1 className="login-rise mt-5 text-4xl leading-[1.1] font-semibold tracking-tight [animation-delay:120ms] xl:text-[3.25rem]">
+            Every shipment,
             <br />
-            Forwarding <span className="text-gold-400">Simplified.</span>
+            one clear <span className="bg-gradient-to-r from-gold-300 to-gold-500 bg-clip-text text-transparent">workflow.</span>
           </h1>
-          <p className="mt-3 text-base text-brand-100">Manage enquiries, quotations, bookings and documentation, all in one platform.</p>
+          <p className="login-rise mt-4 max-w-md text-base leading-relaxed text-brand-100/90 [animation-delay:180ms]">
+            Enquiries, quotations, bookings, airway bills and billing, from the first rate request to the final invoice.
+          </p>
 
-          <ul className="mt-3 grid max-w-md grid-cols-4 divide-x divide-white/15">
+          <ShipmentPreview />
+
+          <ul className="login-rise mt-6 flex flex-wrap gap-2 [animation-delay:300ms]">
             {FEATURES.map(({ label, icon: Icon }) => (
-              <li key={label} className="flex flex-col items-center gap-2 px-2 text-center text-xs font-medium text-brand-50">
-                <Icon size={26} strokeWidth={1.6} className="text-white" aria-hidden />
+              <li key={label} className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-brand-50 backdrop-blur">
+                <Icon size={14} className="text-gold-300" aria-hidden />
                 {label}
               </li>
             ))}
           </ul>
         </div>
 
-        <p className="text-xs font-semibold tracking-[0.3em] text-brand-200 uppercase">Every freight task. One platform.</p>
+        <p className="login-rise text-xs font-medium tracking-[0.25em] text-brand-200/80 uppercase [animation-delay:360ms]">Every freight task. One platform.</p>
       </div>
     </section>
   );
 }
 
-function LoginCard() {
+/** Glass card with a generic sample booking (place A to place B): route line with a plane gliding along it */
+function ShipmentPreview() {
+  return (
+    <div className="login-rise mt-8 max-w-md rounded-2xl border border-white/10 bg-white/[0.06] p-4 shadow-2xl shadow-black/20 backdrop-blur-md [animation-delay:240ms]" aria-hidden>
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-mono text-brand-100">JOB-0001</span>
+        <span className="flex items-center gap-1.5 rounded-full bg-emerald-400/15 px-2 py-0.5 font-medium text-emerald-300">
+          <span className="size-1.5 animate-pulse rounded-full bg-emerald-400" />
+          In transit
+        </span>
+      </div>
+      <div className="mt-4 flex items-center gap-3">
+        <div>
+          <div className="text-xl font-semibold">A</div>
+          <div className="text-xs text-brand-200">Origin</div>
+        </div>
+        <div className="relative h-8 flex-1 [container-type:inline-size]">
+          <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-white/25" />
+          <div className="absolute top-1/2 left-0 h-px w-full origin-left bg-gradient-to-r from-brand-400 to-gold-400 [animation:route-fill_3.2s_cubic-bezier(0.65,0,0.35,1)_infinite]" />
+          <span className="absolute top-1/2 left-0 grid size-7 -translate-y-1/2 place-items-center rounded-full bg-white text-navy-800 shadow-lg [animation:route-fly_3.2s_cubic-bezier(0.65,0,0.35,1)_infinite]">
+            <Plane size={14} className="rotate-45" />
+          </span>
+        </div>
+        <div className="text-right">
+          <div className="text-xl font-semibold">B</div>
+          <div className="text-xs text-brand-200">Destination</div>
+        </div>
+      </div>
+      <div className="mt-4 grid grid-cols-3 gap-2 border-t border-white/10 pt-3 text-xs">
+        {[
+          ["Weight", "210 kg"],
+          ["Pieces", "12"],
+          ["ETA", "2 days"],
+        ].map(([k, v]) => (
+          <div key={k}>
+            <div className="text-brand-200/80">{k}</div>
+            <div className="mt-0.5 font-medium text-white">{v}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const { user, login } = useAuth();
@@ -85,22 +135,32 @@ function LoginCard() {
   const [remember, setRemember] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  // Bumped on every failed attempt so the error shakes again
+  const [errorKey, setErrorKey] = useState(0);
   const [notice, setNotice] = useState("");
+  const [signingIn, setSigningIn] = useState(false);
 
   // Only follow same-site paths from ?next=
   const next = params.get("next");
   const target = next && /^\/(?![/\\])/.test(next) && !next.includes("\\") ? next : "/";
 
-  // Already signed in: skip the form
+  // Already signed in (or just signed in): go on to the app
   useEffect(() => {
     if (user) router.replace(target);
   }, [user, target, router]);
 
+  const fail = (message: string) => {
+    setError(message);
+    setErrorKey((k) => k + 1);
+  };
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setNotice("");
-    if (!email.trim() || !password) return setError("Enter your email address and password.");
-    if (!login(email, password, remember)) setError("Incorrect email or password. Use the demo account below.");
+    if (!email.trim() || !password) return fail("Enter your email address and password.");
+    if (!login(email, password, remember)) return fail("Incorrect email or password. Use the demo account below.");
+    // The redirect above takes over; keep the button in its working state until the app opens
+    setSigningIn(true);
   };
 
   const fillDemo = () => {
@@ -109,128 +169,133 @@ function LoginCard() {
     setError("");
   };
 
-  const inputCls =
-    "h-11 w-full rounded-lg border bg-white pr-3 pl-10 text-sm text-slate-900 shadow-xs outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
+  const inputCls = (bad: boolean) =>
+    cn(
+      "h-11 w-full rounded-xl border bg-white pr-3 pl-10 text-sm text-slate-900 shadow-xs transition-colors outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100",
+      bad ? "border-red-300" : "border-slate-300 hover:border-slate-400",
+    );
 
   return (
-    <div className="w-full max-w-md">
-      {/* Logo above the card on small screens, where the hero panel is hidden */}
-      <Image src="/brand/logo.png" alt="FreightTask" width={1394} height={345} priority className="mx-auto mb-3 h-12 w-auto lg:hidden" />
+    <div className="w-full max-w-sm min-w-0">
+      <Image src="/brand/logo.png" alt="FreightTask" width={1394} height={345} priority className="login-rise mb-8 h-10 w-auto lg:hidden" />
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-xl shadow-navy-900/5 sm:p-3">
-        <Image src="/brand/logo.png" alt="" width={1394} height={345} className="mx-auto hidden h-10 w-auto lg:block" aria-hidden />
-        <p className="mt-1.5 hidden text-center text-[10px] font-semibold tracking-[0.25em] text-navy-700 uppercase lg:block">Every freight task. One platform.</p>
+      <h2 className="login-rise text-3xl font-semibold tracking-tight text-slate-900 [animation-delay:60ms]">Welcome back</h2>
+      <p className="login-rise mt-2 text-sm text-slate-500 [animation-delay:100ms]">Sign in to your FreightTask account to continue.</p>
 
-        <h2 className="mt-0 text-2xl font-semibold tracking-tight text-slate-900 lg:mt-3">Login</h2>
-        <p className="mt-1 text-sm text-slate-500">Enter your credentials to access your account</p>
+      <form onSubmit={submit} noValidate className="login-rise mt-8 space-y-4 [animation-delay:140ms]">
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium text-slate-700">Email address</span>
+          <span className="relative block">
+            <Mail size={17} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-slate-400" aria-hidden />
+            <input
+              type="email"
+              autoComplete="username"
+              placeholder="you@company.com"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setError("");
+              }}
+              aria-invalid={!!error}
+              className={inputCls(!!error)}
+            />
+          </span>
+        </label>
 
-        <form onSubmit={submit} noValidate className="mt-3 space-y-3">
-          <label className="block">
-            <span className="sr-only">Email address</span>
-            <span className="relative block">
-              <Mail size={16} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-slate-400" aria-hidden />
-              <input
-                type="email"
-                autoComplete="username"
-                placeholder="Email address"
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  setError("");
-                }}
-                aria-invalid={!!error}
-                className={cn(inputCls, error ? "border-red-300" : "border-slate-300")}
-              />
-            </span>
-          </label>
-
-          <label className="block">
-            <span className="sr-only">Password</span>
-            <span className="relative block">
-              <Lock size={16} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-slate-400" aria-hidden />
-              <input
-                type={showPassword ? "text" : "password"}
-                autoComplete="current-password"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  setError("");
-                }}
-                aria-invalid={!!error}
-                className={cn(inputCls, "pr-11", error ? "border-red-300" : "border-slate-300")}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((s) => !s)}
-                className="absolute top-1/2 right-2 -translate-y-1/2 rounded-md p-1.5 text-slate-400 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-brand-500"
-                aria-label={showPassword ? "Hide password" : "Show password"}
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </span>
-          </label>
-
-          {error && (
-            <p role="alert" className="text-sm text-red-600">
-              {error}
-            </p>
-          )}
-
-          <div className="flex items-center justify-between gap-3 text-sm">
-            <label className="flex items-center gap-2 text-slate-600">
-              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="size-4 rounded accent-brand-600" />
-              Remember me
-            </label>
+        <label className="block">
+          <span className="mb-1.5 flex items-center justify-between text-sm font-medium text-slate-700">
+            Password
             <button
               type="button"
               onClick={() => setNotice("Password resets aren't available in the demo. Use the demo account below.")}
-              className="rounded-sm font-medium text-brand-500 hover:text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500"
+              className="rounded-sm text-sm font-medium text-brand-600 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-brand-500"
             >
-              Forgot Password?
+              Forgot password?
             </button>
-          </div>
-
-          {notice && (
-            <p role="status" className="rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-800">
-              {notice}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            className="h-11 w-full rounded-lg bg-navy-700 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-navy-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
-          >
-            Login
-          </button>
-        </form>
-
-        <div className="mt-3 rounded-lg border border-dashed border-gold-300 bg-gold-50 p-3 text-xs text-slate-700">
-          <div className="flex items-center justify-between gap-2">
-            <span className="font-semibold text-gold-700">Demo account</span>
+          </span>
+          <span className="relative block">
+            <Lock size={17} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-slate-400" aria-hidden />
+            <input
+              type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setError("");
+              }}
+              aria-invalid={!!error}
+              className={cn(inputCls(!!error), "pr-11")}
+            />
             <button
               type="button"
-              onClick={fillDemo}
-              className="rounded-md bg-white px-2 py-1 font-medium text-brand-700 ring-1 ring-gold-300 ring-inset hover:bg-gold-100 focus-visible:outline-2 focus-visible:outline-brand-500"
+              onClick={() => setShowPassword((s) => !s)}
+              className="absolute top-1/2 right-2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-brand-500"
+              aria-label={showPassword ? "Hide password" : "Show password"}
             >
-              Fill in
+              {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
             </button>
-          </div>
-          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-            <dt className="text-slate-500">Email</dt>
-            <dd className="font-mono break-all">{DEMO_CREDENTIALS.email}</dd>
-            <dt className="text-slate-500">Password</dt>
-            <dd className="font-mono">{DEMO_CREDENTIALS.password}</dd>
-          </dl>
-        </div>
+          </span>
+        </label>
 
-        <p className="mt-3 text-center text-sm text-slate-500">
-          Don&apos;t have an account?{" "}
-          <a href="mailto:support@freighttask.com" className="rounded-sm font-medium text-brand-500 hover:text-brand-700 hover:underline">
-            Contact us
-          </a>
-        </p>
+        {error && (
+          <p key={errorKey} role="alert" className="login-shake flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+            <AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
+            {error}
+          </p>
+        )}
+        {notice && (
+          <p role="status" className="rounded-xl bg-brand-50 px-3 py-2.5 text-sm text-brand-800">
+            {notice}
+          </p>
+        )}
+
+        <label className="flex w-fit items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="size-4 rounded accent-brand-600" />
+          Keep me signed in
+        </label>
+
+        <button
+          type="submit"
+          disabled={signingIn}
+          className="group flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-navy-800 to-brand-700 text-sm font-semibold text-white shadow-lg shadow-brand-700/25 transition-all hover:shadow-xl hover:shadow-brand-700/30 hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 active:scale-[0.99] disabled:cursor-wait disabled:brightness-100"
+        >
+          {signingIn ? (
+            <>
+              <Spinner size="xs" tone="light" /> Signing in…
+            </>
+          ) : (
+            <>
+              Sign in <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" aria-hidden />
+            </>
+          )}
+        </button>
+      </form>
+
+      <div className="login-rise mt-6 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 [animation-delay:200ms]">
+        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-gold-50 text-gold-600 ring-1 ring-gold-200">
+          <KeyRound size={17} aria-hidden />
+        </span>
+        <div className="min-w-0 flex-1 text-xs">
+          <div className="font-semibold text-slate-800">Demo account</div>
+          <div className="truncate font-mono text-slate-500">{DEMO_CREDENTIALS.email}</div>
+          <div className="font-mono text-slate-500">{DEMO_CREDENTIALS.password}</div>
+        </div>
+        <button
+          type="button"
+          onClick={fillDemo}
+          className="shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-brand-700 shadow-xs ring-1 ring-slate-200 ring-inset hover:bg-brand-50 hover:ring-brand-200 focus-visible:outline-2 focus-visible:outline-brand-500"
+        >
+          Fill in
+        </button>
       </div>
+
+      <p className="login-rise mt-8 text-center text-sm text-slate-500 [animation-delay:240ms]">
+        Don&apos;t have an account?{" "}
+        <a href="mailto:support@freighttask.com" className="rounded-sm font-medium text-brand-600 hover:text-brand-800 hover:underline">
+          Contact us
+        </a>
+      </p>
     </div>
   );
 }

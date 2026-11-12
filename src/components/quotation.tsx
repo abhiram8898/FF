@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useLookups, useStore } from "@/lib/store";
 import { QUOTATION_STATUSES, type Quotation, type QuotationStatus } from "@/lib/types";
-import { fmtDate, fmtDateTime, lineGst, lineNet, money, quoteTotals, volumetricWeight } from "@/lib/utils";
+import { f2, fmtDate, fmtDateTime, lineGst, lineNet, money, quoteTotals, volumetricWeight } from "@/lib/utils";
 import { ComposeEmail } from "./ComposeEmail";
 import { FooterBanner, Letterhead } from "./letterhead";
 import { Button, Field, Modal, Select, StatusBadge } from "./ui";
@@ -17,7 +17,6 @@ function QuotationDocument({ q }: { q: Quotation }) {
   const rate = state.rates.find((r) => r.id === q.rateId);
   const t = quoteTotals(q);
   const { company } = state.settings;
-  const f2 = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const groups = [
     { title: airline(q.airlineId)?.name.toUpperCase() ?? "AIRLINE CHARGES", lines: q.lines.filter((l) => l.group === "Airline") },
@@ -37,7 +36,7 @@ function QuotationDocument({ q }: { q: Quotation }) {
   const cell = "border border-navy-700/60 px-2 py-1.5";
 
   return (
-    <div className="text-xs text-navy-800">
+    <div className="doc-sheet text-xs text-navy-800">
       <Letterhead />
       <div className="mb-3 text-center text-sm font-bold">SALES QUOTATION</div>
 
@@ -230,6 +229,9 @@ export function takeActionHref(q: Quotation): string | null {
 /** FRD XVI / XVIII: Quotation Actions (update status, send reminder) */
 export function QuotationActionsModal({ q, onClose }: { q: Quotation; onClose: () => void }) {
   const { actions } = useStore();
+  const { enquiry } = useLookups();
+  // Once a job exists the job owns the status
+  const hasJob = !!enquiry(q.enquiryId)?.jobId;
   const [status, setStatus] = useState<QuotationStatus>(q.status);
   const [reminder, setReminder] = useState(false);
 
@@ -250,7 +252,7 @@ export function QuotationActionsModal({ q, onClose }: { q: Quotation; onClose: (
               Send Reminder
             </Button>
             <Button
-              disabled={status === q.status}
+              disabled={status === q.status || hasJob}
               onClick={() => {
                 actions.setQuotationStatus(q.id, status);
                 onClose();
@@ -265,8 +267,8 @@ export function QuotationActionsModal({ q, onClose }: { q: Quotation; onClose: (
       <div className="mb-3 flex items-center gap-2 text-sm">
         <b>{q.ref}</b> · <StatusBadge status={q.status} />
       </div>
-      <Field label="Update Status">
-        <Select value={status} onChange={(e) => setStatus(e.target.value as QuotationStatus)}>
+      <Field label="Update Status" hint={hasJob ? "This quotation has a job, so its status follows the job. Change the status on the job instead." : undefined}>
+        <Select value={status} disabled={hasJob} onChange={(e) => setStatus(e.target.value as QuotationStatus)}>
           {QUOTATION_STATUSES.map((s) => (
             <option key={s}>{s}</option>
           ))}

@@ -16,11 +16,11 @@ export function Letterhead() {
       <div>{c.logo && <img src={c.logo} alt="" className="max-h-16 max-w-full object-contain" />}</div>
       <div className="text-center">
         <div className="text-base font-bold tracking-wide text-navy-700 uppercase sm:text-lg">{c.name}</div>
-        <div className="text-[11px] font-semibold text-navy-700 uppercase">{c.address}</div>
-        <div className="text-[11px] font-semibold text-navy-700">
+        <div className="text-[0.6875rem] font-semibold text-navy-700 uppercase">{c.address}</div>
+        <div className="text-[0.6875rem] font-semibold text-navy-700">
           Ph: {c.phone} · Email: {c.email}
         </div>
-        <div className="text-[11px] font-semibold text-navy-700">
+        <div className="text-[0.6875rem] font-semibold text-navy-700">
           GSTIN: {c.gstin} / PAN NO: {c.pan}
         </div>
       </div>

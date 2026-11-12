@@ -4,8 +4,8 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Building2, Eye, FilePen, Inbox, Package, Paperclip, PenSquare, Plane, Plus, Save, Send, Trash2 } from "lucide-react";
 import { type RateInput, useLookups, useStore } from "@/lib/store";
-import type { Draft, InboxEmail } from "@/lib/types";
-import { MAIL_TAG, addDays, cn, fmtDateTime, isEmail, matches, splitEmails } from "@/lib/utils";
+import type { Draft, InboxEmail, StoredDoc } from "@/lib/types";
+import { MAIL_TAG, addDays, cn, fmtDateTime, htmlToText, isEmail, matches, splitEmails, toStoredDocs } from "@/lib/utils";
 import {
   Badge,
   Button,
@@ -29,8 +29,9 @@ import {
   Select,
   StatusBadge,
   Tabs,
-  Textarea,
 } from "@/components/ui";
+import { DocList } from "@/components/inputs";
+import { MailBody, RichTextEditor } from "@/components/richtext";
 import { RateForm } from "@/components/workflow";
 
 const FOLDERS = ["Inbox", "Compose", "Drafts", "Sent"] as const;
@@ -83,17 +84,21 @@ function MailLinks({ enquiryId }: { enquiryId?: string }) {
   );
 }
 
-const EMPTY_MAIL = { to: "", cc: "", bcc: "", subject: "", body: "", enquiryId: "" };
+const EMPTY_MAIL = { to: "", cc: "", bcc: "", subject: "", body: "", enquiryId: "", files: [] as StoredDoc[] };
 /** Compose tab: write a mail, save it as a draft or send it */
 function Composer({ draft, onDone }: { draft?: Draft; onDone: (to: Folder) => void }) {
   const { state, actions } = useStore();
   const { customer } = useLookups();
-  const [m, setM] = useState(() => (draft ? { ...draft, to: draft.to.join("; "), enquiryId: draft.enquiryId ?? "" } : EMPTY_MAIL));
+  const [m, setM] = useState(() => (draft ? { ...draft, to: draft.to.join("; "), enquiryId: draft.enquiryId ?? "", files: draft.files ?? [] } : EMPTY_MAIL));
   const set = (patch: Partial<typeof m>) => setM((x) => ({ ...x, ...patch }));
+  const attach = async (files: FileList) => {
+    const docs = await toStoredDocs(files);
+    setM((x) => ({ ...x, files: [...x.files, ...docs] }));
+  };
   const invalid = splitEmails(m.to).filter((e) => !isEmail(e));
   const canSend = splitEmails(m.to).length > 0 && !invalid.length && m.subject.trim() && m.body.trim();
-  const hasContent = Object.values(m).some((v) => v.trim());
-  const mail = { to: splitEmails(m.to), cc: m.cc, bcc: m.bcc, subject: m.subject, body: m.body };
+  const hasContent = [m.to, m.cc, m.bcc, m.subject, m.body, m.enquiryId].some((v) => v.trim()) || m.files.length > 0;
+  const mail = { to: splitEmails(m.to), cc: m.cc, bcc: m.bcc, subject: m.subject, body: m.body, files: m.files };
 
   return (
     <Card
@@ -127,9 +132,16 @@ function Composer({ draft, onDone }: { draft?: Draft; onDone: (to: Folder) => vo
             </Select>
           </Field>
         </div>
-        <Field label="Message *">
-          <Textarea rows={10} value={m.body} onChange={(e) => set({ body: e.target.value })} />
-        </Field>
+        <div>
+          <span className="mb-1 block text-xs font-medium text-slate-600">Message *</span>
+          <RichTextEditor label="Message" value={m.body} onChange={(body) => set({ body })} placeholder="Write your message…" onAttach={attach}>
+            {m.files.length > 0 && (
+              <div className="border-t border-slate-100 p-2">
+                <DocList docs={m.files} onRemove={(id) => set({ files: m.files.filter((f) => f.id !== id) })} />
+              </div>
+            )}
+          </RichTextEditor>
+        </div>
         <div className="text-xs text-slate-500">
           Your signature is added when sending. Demo mode: sent mail is recorded in Sent and Email Logs; no external email leaves the app.
         </div>
@@ -174,7 +186,15 @@ function Mailbox() {
   const { state, actions } = useStore();
   const { enquiry } = useLookups();
   const params = useSearchParams();
-  const [folder, setFolder] = useState<Folder>("Inbox");
+  const requested = params.get("folder") as Folder | null;
+  const [folder, setFolder] = useState<Folder>(requested && FOLDERS.includes(requested) ? requested : "Inbox");
+  // The menu's Inbox / Draft / Sent links change ?folder= on this same page
+  useEffect(() => {
+    if (requested && FOLDERS.includes(requested)) {
+      setFolder(requested);
+      setShowDetail(false);
+    }
+  }, [requested]);
   const [selectedId, setSelectedId] = useState(params.get("id") ?? state.inbox[0]?.id);
   const [linking, setLinking] = useState<InboxEmail | null>(null);
   const selected = state.inbox.find((m) => m.id === selectedId);
@@ -228,14 +248,14 @@ function Mailbox() {
       matches(q, [m.fromName, m.fromEmail, m.subject, enquiry(m.enquiryId)?.ref]),
   );
   const sentMail = state.emailLogs.filter((l) => matches(q, [l.subject, ...l.to]));
-  const drafts = state.drafts.filter((d) => matches(q, [d.subject, ...d.to, d.body]));
+  const drafts = state.drafts.filter((d) => matches(q, [d.subject, ...d.to, htmlToText(d.body)]));
   const reset = () => {
     setQ("");
     setSender("all");
     setLink("all");
     setKpi(null);
   };
-  const listItem = "block w-full px-3 py-3 text-left hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none";
+  const listItem = "block w-full px-3 py-2.5 text-left hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none";
 
   return (
     <>
@@ -300,7 +320,7 @@ function Mailbox() {
                   <button onClick={() => compose(d)} className={cn(listItem, "min-w-0 flex-1")}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-sm font-medium text-slate-800">{d.subject || "(no subject)"}</span>
-                      <span className="shrink-0 text-[11px] text-slate-400">Saved {fmtDateTime(d.savedAt)}</span>
+                      <span className="shrink-0 text-xs text-slate-400">Saved {fmtDateTime(d.savedAt)}</span>
                     </div>
                     <div className="truncate text-xs text-slate-500">To: {d.to.join("; ") || "—"}</div>
                     {d.enquiryId && <Badge className="mt-1">{enquiry(d.enquiryId)?.ref}</Badge>}
@@ -333,7 +353,7 @@ function Mailbox() {
                   <button onClick={() => open(() => setSelectedId(m.id))} aria-current={m.id === selectedId ? "true" : undefined} className={cn(listItem, m.id === selectedId && "bg-brand-50")}>
                     <div className="flex items-center justify-between gap-2">
                       <span className={cn("truncate text-sm", m.read ? "text-slate-700" : "font-semibold text-slate-900")}>{m.fromName}</span>
-                      <span className="shrink-0 text-[11px] text-slate-400">{fmtDateTime(m.receivedAt)}</span>
+                      <span className="shrink-0 text-xs text-slate-400">{fmtDateTime(m.receivedAt)}</span>
                     </div>
                     <div className={cn("truncate text-xs", m.read ? "text-slate-500" : "font-medium text-slate-700")}>{m.subject}</div>
                     <div className="mt-1 flex gap-1">
@@ -398,7 +418,7 @@ function Mailbox() {
                     <button onClick={() => open(() => setSentId(l.id))} aria-current={l.id === sentId ? "true" : undefined} className={cn(listItem, l.id === sentId && "bg-brand-50")}>
                       <div className="flex items-center justify-between gap-2">
                         <span className="truncate text-sm text-slate-700">To: {l.to.join("; ")}</span>
-                        <span className="shrink-0 text-[11px] text-slate-400">{fmtDateTime(l.at)}</span>
+                        <span className="shrink-0 text-xs text-slate-400">{fmtDateTime(l.at)}</span>
                       </div>
                       <div className="truncate text-xs text-slate-500">{l.subject}</div>
                       <Badge className="mt-1">{l.kind}</Badge>
@@ -422,12 +442,18 @@ function Mailbox() {
                   {sent.bcc && <div>BCC: {sent.bcc}</div>}
                   <div>{fmtDateTime(sent.at)}</div>
                 </div>
-                <pre className="font-sans text-sm leading-relaxed break-words whitespace-pre-wrap text-slate-700">{sent.body}</pre>
-                {sent.attachments.map((a) => (
-                  <span key={a} className="mt-3 mr-2 inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700">
-                    <Paperclip size={12} /> {a}
-                  </span>
-                ))}
+                <MailBody body={sent.body} />
+                {sent.files?.length ? (
+                  <div className="mt-4">
+                    <DocList docs={sent.files} />
+                  </div>
+                ) : (
+                  sent.attachments.map((a) => (
+                    <span key={a} className="mt-3 mr-2 inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700">
+                      <Paperclip size={12} /> {a}
+                    </span>
+                  ))
+                )}
               </Card>
             </div>
           ) : (

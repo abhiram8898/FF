@@ -1,58 +1,71 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { FileCheck2, FileStack, ListChecks, Receipt } from "lucide-react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { FileCheck2, FileStack, Merge, Send, Upload } from "lucide-react";
 import { useLookups, useStore } from "@/lib/store";
-import type { Enquiry } from "@/lib/types";
-import { fmtDate, matches, money } from "@/lib/utils";
-import { Badge, Card, FilterBar, FilterSelect, type KpiDef, KpiFilters, kpiTest, NoResults, PageHeader, ResetFilters, RowMenu, SearchField, Table, linkCls } from "@/components/ui";
+import type { Job } from "@/lib/types";
+import { fmtDateTime, matches } from "@/lib/utils";
+import { Badge, Card, FilterBar, FilterSelect, type KpiDef, KpiFilters, kpiTest, NoResults, PageHeader, ResetFilters, RowActions, SearchField, StatusBadge, Table, linkCls } from "@/components/ui";
+import { DispatchChaFlow, DocsUploadModal, MergeModal, docsLineStatus } from "@/components/jobflow";
+import { awbLabel } from "@/components/awb";
 
-const PENDING = <Badge className="bg-amber-50 text-amber-700 ring-amber-200">Pending</Badge>;
-const RECEIVED = <Badge className="bg-emerald-50 text-emerald-800 ring-emerald-200">Received</Badge>;
+const LINE_TONE: Record<ReturnType<typeof docsLineStatus>, string> = {
+  "Pending Documents": "bg-amber-50 text-amber-800 ring-amber-200",
+  "Uploading Completed": "bg-violet-50 text-violet-800 ring-violet-200",
+  "CHA Dispatch Pending": "bg-sky-50 text-sky-800 ring-sky-200",
+  "Booking Completed": "bg-emerald-50 text-emerald-800 ring-emerald-200",
+};
 
-export default function DocumentsPage() {
+type Dialog = { kind: "upload" | "merge" | "dispatch"; jobId: string } | null;
+
+function Documents() {
   const { state } = useStore();
-  const { customer, job } = useLookups();
+  const { customer, job, awbOf } = useLookups();
+  const params = useSearchParams();
   const [q, setQ] = useState("");
-  const [show, setShow] = useState<"all" | "pending" | "complete">("all");
+  const [line, setLine] = useState<"all" | ReturnType<typeof docsLineStatus>>("all");
+  // "Manage Documents" from a job opens its upload pop-up straight away
+  const [dialog, setDialog] = useState<Dialog>(params.get("job") ? { kind: "upload", jobId: params.get("job")! } : null);
+  const open = job(dialog?.jobId);
 
-  // Every booked shipment: invoice & packing list from the customer, then the AWB on the job
-  const all = state.enquiries.filter((e) => e.booking || e.docs || e.jobId);
-  const complete = (e: Enquiry) => !!(e.docs?.packingList && job(e.jobId)?.awb);
-
+  // Every job whose AWB has been executed
+  const all = state.jobs.filter((j) => state.awbs.some((a) => a.jobId === j.id && a.status === "AWB Executed") || j.merged || j.dispatchedAt);
   const [kpi, setKpi] = useState<string | null>(null);
-  const KPIS: KpiDef<Enquiry>[] = [
-    { id: "all", icon: FileStack, label: "Booked Shipments" },
-    { id: "invoice", icon: Receipt, tone: "sky", label: "Invoices Received", test: (e) => !!e.docs },
-    { id: "packing", icon: ListChecks, tone: "amber", label: "Packing Lists Pending", test: (e) => !e.docs?.packingList },
-    { id: "awb", icon: FileCheck2, tone: "green", label: "AWBs Issued", test: (e) => !!job(e.jobId)?.awb },
+  const isLine = (s: ReturnType<typeof docsLineStatus>) => (j: Job) => docsLineStatus(j) === s;
+  const KPIS: KpiDef<Job>[] = [
+    { id: "all", icon: FileStack, label: "Executed AWBs" },
+    { id: "pending", icon: Upload, tone: "amber", label: "Pending Documents", test: isLine("Pending Documents") },
+    { id: "merge", icon: Merge, tone: "violet", label: "Merge Pending", test: isLine("Uploading Completed") },
+    { id: "cha", icon: Send, tone: "sky", label: "CHA Dispatch Pending", test: isLine("CHA Dispatch Pending") },
+    { id: "done", icon: FileCheck2, tone: "green", label: "Booking Completed", test: isLine("Booking Completed") },
   ];
   const kpiOk = kpiTest(KPIS, kpi);
-  const filtered = !!q.trim() || show !== "all" || kpi !== null;
-  const rows = all.filter(kpiOk).filter(
-    (e) =>
-      (show === "all" || (show === "complete") === complete(e)) &&
-      matches(q, [e.ref, customer(e.customerId)?.name, e.docs?.invoiceNo, job(e.jobId)?.ref, job(e.jobId)?.awb?.number]),
-  );
+  const filtered = !!q.trim() || line !== "all" || kpi !== null;
+  const rows = all
+    .filter(kpiOk)
+    .filter((j) => (line === "all" || docsLineStatus(j) === line) && matches(q, [j.ref, customer(j.customerId)?.name, j.awbNo, j.chaName, ...j.documents.map((d) => d.title)]))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const reset = () => {
     setQ("");
-    setShow("all");
+    setLine("all");
     setKpi(null);
   };
 
   return (
     <>
-      <PageHeader title="AWB / Documents" subtitle="Invoice, packing list and air waybill for each booked shipment" />
+      <PageHeader title="Documents" subtitle="Upload the shipment documents for each executed AWB, merge them into one PDF and dispatch to the CHA." />
 
-      <KpiFilters rows={all} kpis={KPIS} active={kpi} onChange={setKpi} />
+      <KpiFilters cols={5} rows={all} kpis={KPIS} active={kpi} onChange={setKpi} />
 
       <FilterBar>
-        <SearchField label="Search documents" value={q} onChange={setQ} />
-        <FilterSelect label="Document status" value={show} onChange={(e) => setShow(e.target.value as typeof show)}>
+        <SearchField label="Search documents" value={q} onChange={setQ} placeholder="Search job, AWB, customer, CHA, document…" />
+        <FilterSelect label="Line status" value={line} onChange={(e) => setLine(e.target.value as typeof line)}>
           <option value="all">All Status</option>
-          <option value="pending">Documents pending</option>
-          <option value="complete">Complete</option>
+          {Object.keys(LINE_TONE).map((s) => (
+            <option key={s}>{s}</option>
+          ))}
         </FilterSelect>
         <ResetFilters onClick={reset} disabled={!filtered} />
       </FilterBar>
@@ -62,62 +75,61 @@ export default function DocumentsPage() {
           <Table>
             <thead>
               <tr>
-                <th>Enquiry ID</th>
-                <th>Customer</th>
-                <th>Invoice</th>
-                <th>Packing List</th>
+                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Job No</th>
                 <th>AWB</th>
-                <th className="w-14 text-center">Actions</th>
+                <th>Customer</th>
+                <th>CHA</th>
+                <th className="text-right">Documents</th>
+                <th>Merged</th>
+                <th>Line Status</th>
+                <th>Job Status</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((e) => {
-                const j = job(e.jobId);
+              {rows.map((j) => {
+                const awb = awbOf(j.id);
+                const status = docsLineStatus(j);
                 return (
-                  <tr key={e.id} className="hover:bg-slate-50">
+                  <tr key={j.id} className="hover:bg-slate-50">
                     <td className="whitespace-nowrap">
-                      <Link href={`/enquiries/${e.id}`} className={linkCls}>
-                        {e.ref}
+                      <RowActions
+                        label={`Actions for ${j.ref}`}
+                        items={[
+                          { label: "Upload Documents", onSelect: () => setDialog({ kind: "upload", jobId: j.id }) },
+                          ...(j.uploadCompletedAt ? [{ label: "Merge Documents", onSelect: () => setDialog({ kind: "merge", jobId: j.id }) }] : []),
+                          ...(j.merged ? [{ label: "Dispatch To CHA", onSelect: () => setDialog({ kind: "dispatch", jobId: j.id }) }] : []),
+                          { label: "Open job", href: `/shipments/${j.id}` },
+                        ]}
+                      />
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <Link href={`/shipments/${j.id}`} className={`${linkCls} font-mono text-xs`}>
+                        {j.ref}
                       </Link>
                     </td>
-                    <td className="max-w-44 truncate">{customer(e.customerId)?.name}</td>
-                    <td className="whitespace-nowrap">
-                      {e.docs ? (
-                        <>
-                          {e.docs.invoiceNo}
-                          <div className="text-xs text-slate-500">
-                            {money(e.docs.invoiceValue)} · {fmtDate(e.docs.receivedAt)}
-                          </div>
-                        </>
-                      ) : (
-                        PENDING
-                      )}
-                    </td>
-                    <td>{e.docs?.packingList ? RECEIVED : PENDING}</td>
-                    <td className="whitespace-nowrap">
-                      {j ? (
-                        <Link href={`/shipments/${j.id}`} className={linkCls}>
-                          {j.ref}
-                        </Link>
+                    <td className="font-mono text-xs whitespace-nowrap">{awb ? awbLabel(awb) : j.awbNo || "—"}</td>
+                    <td className="max-w-44 truncate">{customer(j.customerId)?.name}</td>
+                    <td className="max-w-40 truncate">{j.chaName || <span className="text-amber-700">Not chosen</span>}</td>
+                    <td className="text-right tabular-nums">{j.documents.length}</td>
+                    <td className="text-xs whitespace-nowrap text-slate-600">
+                      {j.merged ? (
+                        j.merged.dataUrl ? (
+                          <a href={j.merged.dataUrl} download={j.merged.fileName} className={linkCls}>
+                            {fmtDateTime(j.merged.at)}
+                          </a>
+                        ) : (
+                          fmtDateTime(j.merged.at)
+                        )
                       ) : (
                         "—"
                       )}
                     </td>
                     <td className="whitespace-nowrap">
-                      {j?.awb ? (
-                        <span className="font-mono text-xs">
-                          {j.awb.type === "Master" ? "MAWB" : "HAWB"} {j.awb.number}
-                        </span>
-                      ) : (
-                        PENDING
-                      )}
+                      <Badge className={LINE_TONE[status]}>{status}</Badge>
                     </td>
-                    <td className="text-center">
-                      <RowMenu
-                        label={`Actions for ${e.ref}`}
-                        items={[{ label: "View enquiry", href: `/enquiries/${e.id}` }, ...(j ? [{ label: "View job / AWB", href: `/shipments/${j.id}` }] : [])]}
-                      />
+                    <td className="whitespace-nowrap">
+                      <StatusBadge status={j.status} />
                     </td>
                   </tr>
                 );
@@ -126,10 +138,22 @@ export default function DocumentsPage() {
           </Table>
         ) : (
           <NoResults filtered={filtered} onClear={reset}>
-            No documents yet. Documents are collected once a booking is confirmed.
+            No executed AWBs yet. Documents are handled once a job&apos;s AWB is executed.
           </NoResults>
         )}
       </Card>
+
+      {open && dialog?.kind === "upload" && <DocsUploadModal job={open} onClose={() => setDialog(null)} onMerge={() => setDialog({ kind: "merge", jobId: open.id })} />}
+      {open && dialog?.kind === "merge" && <MergeModal job={open} onClose={() => setDialog(null)} onDispatch={() => setDialog({ kind: "dispatch", jobId: open.id })} />}
+      {open && dialog?.kind === "dispatch" && <DispatchChaFlow job={open} onClose={() => setDialog(null)} />}
     </>
+  );
+}
+
+export default function DocumentsPage() {
+  return (
+    <Suspense>
+      <Documents />
+    </Suspense>
   );
 }

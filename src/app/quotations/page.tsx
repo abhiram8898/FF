@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useState } from "react";
 import {
   CircleCheck,
@@ -42,7 +42,7 @@ import {
   NoResults,
   PageHeader,
   ResetFilters,
-  RowMenu,
+  RowActions,
   SearchField,
   Select,
   StatusBadge,
@@ -55,10 +55,11 @@ import {
   takeActionHref,
 } from "@/components/quotation";
 import { RouteCell } from "@/components/workflow";
+import { JobsTabs } from "@/components/JobsTabs";
 
 export default function QuotationsPage() {
   const router = useRouter();
-  const { state } = useStore();
+  const { state, actions } = useStore();
   const { enquiry, customer } = useLookups();
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<QuotationStatus | "all">("all");
@@ -111,14 +112,16 @@ export default function QuotationsPage() {
   return (
     <>
       <PageHeader
-        title="Quotations"
-        subtitle="Create, preview and send freight quotations to customers"
+        title="Jobs"
+        subtitle="Create, preview and send freight quotations; revise or duplicate them for similar shipments"
         actions={
           <Button onClick={() => setPicking(true)}>
             <Plus size={16} aria-hidden /> New Quotation
           </Button>
         }
       />
+
+      <JobsTabs />
 
       <KpiFilters cols={5} rows={state.quotations} kpis={KPIS} active={kpi} onChange={setKpi} />
 
@@ -163,14 +166,15 @@ export default function QuotationsPage() {
           <Table>
             <thead>
               <tr>
+                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Quotation ID</th>
                 <th>Date</th>
                 <th>Customer</th>
+                <th>Type</th>
                 <th>Route</th>
                 <th>Mode</th>
                 <th className="text-right">Grand Total</th>
                 <th>Status</th>
-                <th className="w-14 text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -178,6 +182,32 @@ export default function QuotationsPage() {
                 const e = enquiry(x.enquiryId);
                 return (
                   <tr key={x.id} className="hover:bg-slate-50">
+                    <td className="whitespace-nowrap">
+                      <RowActions
+                        label={`Actions for ${x.ref}`}
+                        items={[
+                          { label: "View", onSelect: () => setView(x) },
+                          { label: "Edit", href: `/quotations/${x.id}` },
+                          {
+                            label: "Take Action",
+                            ...(takeActionHref(x)
+                              ? { href: takeActionHref(x)! }
+                              : { onSelect: () => setActionsFor(x) }),
+                          },
+                          {
+                            label: "Status Change / Reminder",
+                            onSelect: () => setActionsFor(x),
+                          },
+                          {
+                            label: "Duplicate",
+                            onSelect: () => router.push(`/quotations/${actions.duplicateQuotation(x.id).id}`),
+                          },
+                          ...(x.status === "Booking Confirmed" && !e?.jobId
+                            ? [{ label: "Convert to Job", href: `/shipments/new?quotation=${x.id}` }]
+                            : []),
+                        ]}
+                      />
+                    </td>
                     <td className="whitespace-nowrap">
                       <Link href={`/quotations/${x.id}`} className={linkCls}>
                         {x.ref}
@@ -192,44 +222,21 @@ export default function QuotationsPage() {
                     >
                       {customer(e?.customerId)?.name}
                     </td>
+                    <td className="whitespace-nowrap">{e?.shipmentMode}</td>
                     <td>
-                      <RouteCell pol={e?.pol} pod={e?.pod} />
+                      <RouteCell pol={e?.pol} pod={e?.pod} route={e?.route} />
                     </td>
-                    <td className="whitespace-nowrap">
-                      {e?.cargoMode}{" "}
-                      <span className="text-xs text-slate-400">
-                        {e?.shipmentMode}
-                      </span>
-                    </td>
+                    <td className="whitespace-nowrap">{e?.cargoMode}</td>
                     <td className="text-right whitespace-nowrap tabular-nums">
                       {money(quoteTotals(x).grand)}
                     </td>
                     <td className="whitespace-nowrap">
                       <StatusBadge status={x.status} />
                       {x.status !== "Draft" && (
-                        <div className="mt-0.5 text-[11px] text-slate-400">
+                        <div className="mt-0.5 text-xs text-slate-400">
                           {laps(x.statusAt)}
                         </div>
                       )}
-                    </td>
-                    <td className="text-center">
-                      <RowMenu
-                        label={`Actions for ${x.ref}`}
-                        items={[
-                          { label: "View", onSelect: () => setView(x) },
-                          { label: "Edit", href: `/quotations/${x.id}` },
-                          {
-                            label: "Take Action",
-                            ...(takeActionHref(x)
-                              ? { href: takeActionHref(x)! }
-                              : { onSelect: () => setActionsFor(x) }),
-                          },
-                          {
-                            label: "Update status / Reminder",
-                            onSelect: () => setActionsFor(x),
-                          },
-                        ]}
-                      />
                     </td>
                   </tr>
                 );
@@ -273,8 +280,8 @@ export default function QuotationsPage() {
           }
         >
           <p className="mb-3 text-sm text-slate-600">
-            Quotations are created from an enquiry, and the Enquiry ID becomes
-            the Quotation ID.
+            Quotations are created from an enquiry. The number follows
+            Settings → Ref Number Format → Quote Number.
           </p>
           {withoutQuote.length ? (
             <Field label="Enquiry">

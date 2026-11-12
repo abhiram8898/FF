@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { type JobInput, nextJobRef, useLookups, useStore } from "@/lib/store";
-import { JOB_STATUSES, type JobStatus } from "@/lib/types";
+import { JOB_FINAL_STATUSES, type JobStatus } from "@/lib/types";
 import { fmtPort } from "@/lib/utils";
-import { Button, Card, Field, Input, Select, Textarea } from "./ui";
+import { Button, Card, Field, Input, Select, Textarea, useUnsavedChanges } from "./ui";
 import { DocumentsInput } from "./inputs";
 
 const TEMP = "__temporary";
@@ -54,14 +54,7 @@ function MasterOrTemporary({
   );
 }
 
-export const JOB_STATUS_TONE: Record<JobStatus, string> = {
-  BOOKED: "bg-sky-50 text-sky-800 ring-sky-200",
-  "ON HOLD": "bg-amber-50 text-amber-800 ring-amber-200",
-  DEPARTED: "bg-emerald-50 text-emerald-800 ring-emerald-200",
-  CANCELLED: "bg-red-50 text-red-700 ring-red-200",
-};
-
-/** Booking/Job fields (FRD changes 8.e i–xxxi). Used for "+ Add Booking" and for editing. */
+/** Booking/Job fields (FRD VI Tab 3, A–FF). Used for "+ Add Booking" and for editing. */
 export function BookingJobForm({
   initial,
   jobRef,
@@ -72,7 +65,8 @@ export function BookingJobForm({
   initial: JobInput;
   /** The saved job's number; left out for a new booking, which shows the next number */
   jobRef?: string;
-  onSubmit: (data: JobInput) => void;
+  /** `ref` is the number typed when automatic job numbering is off */
+  onSubmit: (data: JobInput, ref?: string) => void;
   submitLabel: string;
   /** Keep the button disabled until something changes (editing) */
   requireChanges?: boolean;
@@ -84,18 +78,25 @@ export function BookingJobForm({
   const text = (k: keyof JobInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => set(k, e.target.value as never);
   const num = (k: "weight" | "boxes") => (e: React.ChangeEvent<HTMLInputElement>) => set(k, Number(e.target.value));
   const dirty = JSON.stringify(f) !== JSON.stringify(initial);
+  useUnsavedChanges(dirty);
+  const manualRef = !jobRef && !state.settings.jobRef.auto;
+  const [typedRef, setTypedRef] = useState("");
+  const refTaken = manualRef && state.jobs.some((j) => j.ref.toLowerCase() === typedRef.trim().toLowerCase());
 
-  const shippers = state.customers.filter((c) => c.type === "Shipper/Receiver");
-  const chas = state.agents.filter((a) => a.type === "CHA");
+  const shippers = state.customers.filter((c) => c.type === "Shipper" && c.status !== "Inactive");
+  const chas = state.customers.filter((c) => c.type === "CHA" && c.status !== "Inactive");
+  // A new job starts at AWB In Progress; afterwards the status is picked from the FRD list
+  const statusOptions: JobStatus[] = jobRef ? [...new Set([initial.status, ...JOB_FINAL_STATUSES])] : [initial.status];
   const port = (code: string) => fmtPort(state.ports.find((p) => p.code === code)) || code;
   const section = "mb-3 text-xs font-semibold tracking-wide text-slate-500 uppercase";
-  const grid = "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4";
+  const grid = "grid grid-cols-1 max-xs:*:col-span-full xs:grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4";
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit(f);
+        if (manualRef && (!typedRef.trim() || refTaken)) return;
+        onSubmit(f, manualRef ? typedRef : undefined);
       }}
       className="space-y-3"
     >
@@ -108,13 +109,26 @@ export function BookingJobForm({
           <Field label="Quotation Number">
             <Input value={quotation(f.quotationId)?.ref ?? ""} readOnly disabled />
           </Field>
-          <Field label="Booking/Job No" hint={jobRef ? undefined : "Next number in the sequence (Settings → Ref Number)"}>
-            <Input value={jobRef ?? nextJobRef(state, f)} readOnly disabled className="font-mono" />
-          </Field>
-          <Field label="Status">
-            <Select value={f.status} onChange={(e) => set("status", e.target.value as JobStatus)}>
-              {JOB_STATUSES.map((s) => (
+          {manualRef ? (
+            <Field label="Booking/Job No *" hint={refTaken ? <span className="text-red-600">Already used</span> : "Automatic numbering is off (Settings)"}>
+              <Input value={typedRef} onChange={(e) => setTypedRef(e.target.value.toUpperCase())} placeholder={nextJobRef(state, f)} className="font-mono" required />
+            </Field>
+          ) : (
+            <Field label="Booking/Job No" hint={jobRef ? undefined : "Next number in the sequence (Settings → Ref Number Format)"}>
+              <Input value={jobRef ?? nextJobRef(state, f)} readOnly disabled className="font-mono" />
+            </Field>
+          )}
+          <Field label="Status" hint={jobRef ? "Departed creates the proforma invoice in Billing" : "Moves on as the AWB and documents are done"}>
+            <Select value={f.status} disabled={!jobRef} onChange={(e) => set("status", e.target.value as JobStatus)}>
+              {statusOptions.map((s) => (
                 <option key={s}>{s}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Branch">
+            <Select value={f.branch} onChange={(e) => set("branch", e.target.value)}>
+              {state.settings.branches.map((b) => (
+                <option key={b.name}>{b.name}</option>
               ))}
             </Select>
           </Field>
@@ -141,6 +155,9 @@ export function BookingJobForm({
       <Card>
         <h3 className={section}>Flight & cargo</h3>
         <div className={grid}>
+          <Field label="Booking Reference" hint="From the airline portal; used as the House AWB number">
+            <Input value={f.bookingRef} onChange={text("bookingRef")} />
+          </Field>
           <Field label="AWB No">
             <Input value={f.awbNo} onChange={text("awbNo")} placeholder="e.g. 098-30493323" />
           </Field>
@@ -224,8 +241,11 @@ export function BookingJobForm({
             id={f.chaId}
             name={f.chaName}
             tempLabel="Temporary CHA"
-            onChange={(v) => setF((x) => ({ ...x, chaId: v.id, chaName: v.name }))}
+            onChange={(v) => setF((x) => ({ ...x, chaId: v.id, chaName: v.name, chaEmail: chas.find((c) => c.id === v.id)?.email ?? "" }))}
           />
+          <Field label="CHA Email" hint="Documents are dispatched to this address">
+            <Input type="email" value={f.chaEmail} onChange={text("chaEmail")} disabled={!!f.chaId} />
+          </Field>
           <Field label="TSP (Additional)">
             <Input value={f.tspAdditional} onChange={text("tspAdditional")} />
           </Field>
@@ -244,8 +264,8 @@ export function BookingJobForm({
         </div>
       </Card>
 
-      <Card title="Documents">
-        <DocumentsInput value={f.documents} onChange={(documents) => set("documents", documents)} />
+      <Card title="Upload Documents">
+        <DocumentsInput titled value={f.documents} onChange={(documents) => set("documents", documents)} />
       </Card>
 
       <div className="flex items-center justify-end gap-3">

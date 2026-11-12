@@ -6,15 +6,19 @@ import {
   CalendarClock,
   CircleCheck,
   ClipboardList,
+  Eye,
   FilePlus2,
+  FileStack,
   FileText,
   Inbox,
   Package,
+  Plane,
   Plus,
   X,
+  type LucideIcon,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { useLookups, useStore } from "@/lib/store";
+import type { EnquiryStatus } from "@/lib/types";
 import {
   MAIL_TAG,
   STAGES,
@@ -31,7 +35,7 @@ import {
   KpiGrid,
   LinkButton,
   PageHeader,
-  RowMenu,
+  RowActions,
   StatusBadge,
   Table,
   linkCls,
@@ -48,6 +52,8 @@ const STAGE_LOOK: Record<
   date: { icon: CalendarClock, tone: "amber" },
   booking: { icon: Package, tone: "violet" },
   booked: { icon: CircleCheck, tone: "green" },
+  awb: { icon: Plane, tone: "red" },
+  docs: { icon: FileStack, tone: "slate" },
 };
 
 export default function DashboardPage() {
@@ -57,17 +63,36 @@ export default function DashboardPage() {
   // The expanded slide: its enquiries show below, with the slides still visible on top
   const [open, setOpen] = useState<StageKey | null>(null);
   const openStage = STAGES.find((s) => s.key === open);
-  const inStage = (statuses: readonly string[]) =>
-    state.enquiries.filter((e) => statuses.includes(e.status));
-  const rows = [...(openStage ? inStage(openStage.statuses) : state.enquiries)]
-    .sort((a, b) => b.no - a.no)
+  // Enquiries, plus jobs that came from a reservation (they have no enquiry but go through the same job stages)
+  type Row = { key: string; ref: string; href: string; customerId: string; pol: string; pod: string; status: EnquiryStatus; statusAt: string; createdAt: string; jobId?: string; editHref?: string };
+  const allRows: Row[] = [
+    ...state.enquiries.map((e) => ({
+      key: e.id,
+      ref: e.ref,
+      href: `/enquiries/${e.id}`,
+      customerId: e.customerId,
+      pol: e.pol,
+      pod: e.pod,
+      status: e.status,
+      statusAt: e.statusAt,
+      createdAt: e.createdAt,
+      jobId: e.jobId,
+      editHref: isEnquiryLocked(e) ? undefined : `/enquiries/${e.id}/edit`,
+    })),
+    ...state.jobs
+      .filter((j) => !j.enquiryId)
+      .map((j) => ({ key: j.id, ref: j.ref, href: `/shipments/${j.id}`, customerId: j.customerId, pol: j.pol, pod: j.pod, status: j.status, statusAt: j.statusAt, createdAt: j.createdAt, jobId: j.id })),
+  ];
+  const inStage = (statuses: readonly string[]) => allRows.filter((r) => statuses.includes(r.status));
+  const rows = [...(openStage ? inStage(openStage.statuses) : allRows)]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, openStage ? undefined : 7);
 
   return (
     <>
       <PageHeader
         title="Dashboard"
-        subtitle="Where every enquiry stands. Select a slide to expand its enquiries below."
+        subtitle="Where every enquiry and job stands. Select a slide to expand its entries below."
         actions={
           <LinkButton href="/enquiries/new">
             <Plus size={16} aria-hidden /> New Enquiry
@@ -75,20 +100,21 @@ export default function DashboardPage() {
         }
       />
 
-      <KpiGrid cols={3}>
+      <KpiGrid cols={4}>
         {STAGES.map((s) => (
           <Kpi
             key={s.key}
             {...STAGE_LOOK[s.key]}
             value={inStage(s.statuses).length}
             label={s.label}
+            hint={s.hint}
             active={open === s.key}
             onClick={() => setOpen(open === s.key ? null : s.key)}
           />
         ))}
       </KpiGrid>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="stagger-in grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Card
           title={
             openStage ? (
@@ -125,18 +151,30 @@ export default function DashboardPage() {
             <Table>
               <thead>
                 <tr>
-                  <th>Enquiry ID</th>
+                  <th className="w-px whitespace-nowrap">Actions</th>
+                  <th>Enquiry / Job</th>
                   <th>Customer</th>
                   <th>Route</th>
                   <th>Status</th>
-                  <th className="w-14 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((e) => (
-                  <tr key={e.id} className="hover:bg-slate-50">
+                  <tr key={e.key} className="hover:bg-slate-50">
                     <td className="whitespace-nowrap">
-                      <Link href={`/enquiries/${e.id}`} className={linkCls}>
+                      <RowActions
+                        label={`Actions for ${e.ref}`}
+                        items={[
+                          // The row's own record (enquiry, or a job that came from a reservation) is the eye
+                          { label: e.href.startsWith("/enquiries/") ? "View enquiry" : "View job", href: e.href, icon: Eye, tone: "view" },
+                          ...(e.jobId && e.href !== `/shipments/${e.jobId}` ? [{ label: "Open its job", href: `/shipments/${e.jobId}` }] : []),
+                          ...(openStage?.key === "docs" && e.jobId ? [{ label: "Manage documents", href: `/documents?job=${e.jobId}` }] : []),
+                          ...(e.editHref ? [{ label: "Edit enquiry", href: e.editHref }] : []),
+                        ]}
+                      />
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <Link href={e.href} className={linkCls}>
                         {e.ref}
                       </Link>
                     </td>
@@ -148,20 +186,9 @@ export default function DashboardPage() {
                     </td>
                     <td className="whitespace-nowrap">
                       <StatusBadge status={e.status} />
-                      <div className="mt-0.5 text-[11px] text-slate-400">
+                      <div className="mt-0.5 text-xs text-slate-400">
                         {laps(e.statusAt)}
                       </div>
-                    </td>
-                    <td className="text-center">
-                      <RowMenu
-                        label={`Actions for ${e.ref}`}
-                        items={[
-                          { label: "View", href: `/enquiries/${e.id}` },
-                          ...(isEnquiryLocked(e)
-                            ? []
-                            : [{ label: "Edit", href: `/enquiries/${e.id}/edit` }]),
-                        ]}
-                      />
                     </td>
                   </tr>
                 ))}
@@ -169,7 +196,7 @@ export default function DashboardPage() {
             </Table>
           ) : (
             <div className="p-3">
-              <Empty>No enquiries in this slide right now.</Empty>
+              <Empty>Nothing in this slide right now.</Empty>
             </div>
           )}
         </Card>
