@@ -1,24 +1,16 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { DARK_QUERY, DEFAULT_MODE, THEME_KEY as KEY, type ThemeMode } from "./theme-script";
 
-export type ThemeMode = "light" | "dark" | "system";
-
-const KEY = "freighttask:theme";
-const DARK_QUERY = "(prefers-color-scheme: dark)";
-
-/**
- * Runs in <head> before the page paints, so a dark-mode user never sees a white flash.
- * Kept tiny and self-contained (no imports): it's inlined as a string.
- */
-export const THEME_SCRIPT = `(function(){try{var m=localStorage.getItem("${KEY}")||"light";var d=m==="dark"||(m==="system"&&matchMedia("${DARK_QUERY}").matches);document.documentElement.classList.toggle("dark",d)}catch(e){}})()`;
+export type { ThemeMode } from "./theme-script";
 
 const readMode = (): ThemeMode => {
   try {
     const m = localStorage.getItem(KEY);
-    return m === "dark" || m === "system" ? m : "light";
+    return m === "light" || m === "dark" || m === "system" ? m : DEFAULT_MODE;
   } catch {
-    return "light";
+    return DEFAULT_MODE;
   }
 };
 
@@ -36,7 +28,7 @@ const ThemeContext = createContext<ThemeValue | null>(null);
 
 /** Light / Dark / System preference, saved in this browser and applied as html.dark */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setModeState] = useState<ThemeMode>("light");
+  const [mode, setModeState] = useState<ThemeMode>(DEFAULT_MODE);
 
   // Pick up the saved choice (the head script has already applied it)
   useEffect(() => setModeState(readMode()), []);

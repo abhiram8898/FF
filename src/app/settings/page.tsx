@@ -143,7 +143,9 @@ function TaxCodeEditor({ title, items, onChange }: { title: string; items: TaxCo
             <th>Code</th>
             <th>Description (official)</th>
             <th>Short Description</th>
-            <th />
+            <th>
+                <span className="sr-only">Remove</span>
+              </th>
           </tr>
         </thead>
         <tbody>
@@ -205,7 +207,9 @@ function FinancialYearsEditor({ items, onChange }: { items: FinancialYear[]; onC
             <th>Status</th>
             <th>Default</th>
             <th>Remarks</th>
-            <th />
+            <th>
+                <span className="sr-only">Remove</span>
+              </th>
           </tr>
         </thead>
         <tbody>

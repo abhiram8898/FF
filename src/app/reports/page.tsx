@@ -120,7 +120,7 @@ export default function ReportsPage() {
         subtitle="Enquiry pipeline and conversion across customers and routes"
       />
 
-      <KpiFilters rows={enquiries} kpis={KPIS} active={kpi} onChange={setKpi} />
+      <KpiFilters cols={3} rows={enquiries} kpis={KPIS} active={kpi} onChange={setKpi} />
 
       <FilterBar>
         <FilterSelect

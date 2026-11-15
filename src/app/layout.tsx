@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { AppShell } from "@/components/AppShell";
+import { ScrollbarActivity } from "@/components/ScrollbarActivity";
 import { AuthProvider } from "@/lib/auth";
 import { StoreProvider } from "@/lib/store";
-import { THEME_SCRIPT, ThemeProvider } from "@/lib/theme";
+import { ThemeProvider } from "@/lib/theme";
+import { THEME_SCRIPT } from "@/lib/theme-script";
 import "./globals.css";
 
 const inter = Inter({
@@ -28,6 +30,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body className={`${inter.variable} antialiased`}>
+        <ScrollbarActivity />
         <ThemeProvider>
           <AuthProvider>
             <StoreProvider>

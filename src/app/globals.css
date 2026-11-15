@@ -52,6 +52,33 @@
   --color-gold-700: #96661a;
 }
 
+/*
+ * macOS-style scrollbars: thin, and invisible until needed. An inner scroll area (table, dialog,
+ * sidebar) shows its scrollbar while hovered; anything shows it while being scrolled (.is-scrolling,
+ * set by ScrollbarActivity); the page's own scrollbar also shows with the pointer at the right edge
+ * (.scrollbar-near). In the base layer, so a utility like [scrollbar-width:none] still wins.
+ * The window itself never scrolls: the app shell scrolls only its content area (.app-scroll).
+ */
+@layer base {
+  :root {
+    --scroll-thumb: rgb(100 116 139 / 0.5);
+  }
+  .dark {
+    --scroll-thumb: rgb(148 163 184 / 0.45);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  /* The content area (.app-scroll) is always under the pointer, so it shows on scroll or at the edge only */
+  :not(html, .app-scroll):hover,
+  .is-scrolling,
+  html.scrollbar-near,
+  html.scrollbar-near .app-scroll {
+    scrollbar-color: var(--scroll-thumb) transparent;
+  }
+}
+
 body {
   background: var(--color-slate-50);
   color: var(--color-slate-900);
@@ -214,6 +241,18 @@ body {
  */
 .page-enter > :not(.stagger-in, .modal-overlay, [role="status"]) {
   animation: page-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+/*
+ * The first section (page title) slides in without fading: text at opacity 0 doesn't count as
+ * painted, so a fade there pushed Largest Contentful Paint back by the whole animation (~0.5 s).
+ */
+@keyframes page-in-solid {
+  from {
+    transform: translateY(10px);
+  }
+}
+.page-enter > :first-child:not(.stagger-in, .modal-overlay, [role="status"]) {
+  animation: page-in-solid 0.45s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 .page-enter > :not(.stagger-in, .modal-overlay, [role="status"]):nth-child(2) { animation-delay: 60ms; }
 .page-enter > :not(.stagger-in, .modal-overlay, [role="status"]):nth-child(3) { animation-delay: 120ms; }
@@ -384,7 +423,7 @@ body {
   --color-slate-100: #1a2333;
   --color-slate-200: #263043;
   --color-slate-300: #334155;
-  --color-slate-400: #64748b;
+  --color-slate-400: #8391a7;
   --color-slate-500: #94a3b8;
   --color-slate-600: #a6b3c6;
   --color-slate-700: #cbd5e1;
@@ -668,6 +707,13 @@ input[type="checkbox"]:focus-visible {
   main {
     max-width: none !important;
     padding: 0 !important;
+  }
+  /* Print the whole page, not just the part visible in the scroll area */
+  .app-root,
+  .app-scroll {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
   }
 }
 

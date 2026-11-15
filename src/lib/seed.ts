@@ -40,7 +40,10 @@ const DEFAULT_SETTINGS: Settings = {
     pan: "AAVCA8825F",
     signature: "Regards,\nAirsteam Logistics Operations Team\n+91 88480 13759 | accounts@airsteam.example",
   },
-  bank: {
+  banks: [
+    {
+    id: "bk-1",
+    isDefault: true,
     beneficiaryName: "Airsteam Logistics Private Limited",
     accountTitle: "INR",
     accountNo: "50200063307993",
@@ -59,7 +62,8 @@ const DEFAULT_SETTINGS: Settings = {
     bankAddress: "Main Road, Mulanthuruthy",
     bankCity: "Ernakulam",
     bankPostalCode: "682314",
-  },
+    },
+  ],
   refPrefix: "AIS",
   enquiryRef: { label: "EQ: ", auto: true, parts: ["company", "seq", "year"], separator: "-", digits: 4 },
   quoteRef: { label: "QUO", auto: true, parts: ["company", "branch", "seq", "year"], separator: "/", digits: 4 },

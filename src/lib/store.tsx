@@ -8,6 +8,7 @@ import type {
   AirlineRate,
   Awb,
   AwbStatus,
+  BankDetails,
   Bill,
   BillLine,
   BillStatus,
@@ -41,6 +42,17 @@ import { PageLoader } from "@/components/ui";
 
 // Bumped when the saved data's shape changes, so old demo data is reseeded
 const STORAGE_KEY = "freighttask:v6";
+
+/** Brings data saved by an older version up to date */
+function migrate(s: State): State {
+  // One bank account → a list of accounts (Company Set up → Bank Account)
+  const settings = s.settings as State["settings"] & { bank?: BankDetails };
+  if (!Array.isArray(settings.banks)) {
+    const { bank, ...rest } = settings;
+    s = { ...s, settings: { ...rest, banks: bank ? [{ ...bank, id: uid(), isDefault: true }] : [] } };
+  }
+  return s;
+}
 
 /** Removes the saved workspace so the next load starts from the demo data (used when the app can't start) */
 export function clearSavedData() {
@@ -354,7 +366,7 @@ function useStoreState() {
     } catch {
       /* ignore corrupt storage */
     }
-    ref.current = loaded ?? createSeed();
+    ref.current = loaded ? migrate(loaded) : createSeed();
     setState(ref.current);
   }, []);
 
@@ -870,6 +882,36 @@ function useStoreState() {
         commit(s);
         toast(`Booking/Job ${job.ref} created`);
         return job;
+      },
+
+      /**
+       * Deletes a booking/job made by mistake. Refused once it has an executed AWB or any bill or
+       * invoice (those are kept; cancel the job instead). Draft AWBs go with it; the enquiry is
+       * unlinked and goes back to Booking Confirmed so it can be booked again; a reservation is unlinked.
+       * Returns whether it was deleted.
+       */
+      deleteJob(id: string): boolean {
+        let s = get();
+        const job = s.jobs.find((j) => j.id === id);
+        if (!job) return false;
+        if (s.awbs.some((a) => a.jobId === id && a.status === "AWB Executed")) {
+          toast(`${job.ref} has an executed AWB, so it can't be deleted. Change its status to Cancelled instead.`);
+          return false;
+        }
+        if (s.bills.some((b) => b.jobId === id) || s.invoices.some((i) => i.jobId === id)) {
+          toast(`${job.ref} has bills or invoices, so it can't be deleted. Change its status to Cancelled instead.`);
+          return false;
+        }
+        s = { ...s, jobs: s.jobs.filter((j) => j.id !== id), awbs: s.awbs.filter((a) => a.jobId !== id) };
+        const enq = s.enquiries.find((e) => e.id === job.enquiryId);
+        if (enq?.jobId === id) {
+          s = patchEnquiry(s, enq.id, { jobId: undefined });
+          if ((JOB_STATUSES as readonly string[]).includes(enq.status) && enq.status !== "Cancelled") s = setStatus(s, enq.id, "Booking Confirmed");
+        }
+        if (job.reservationId) s = patchReservation(s, job.reservationId, { jobId: undefined }, "Job deleted", job.ref);
+        commit(s);
+        toast(`Booking/Job ${job.ref} deleted`);
+        return true;
       },
 
       updateJob(id: string, patch: Partial<JobInput>) {

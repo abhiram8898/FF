@@ -52,7 +52,7 @@ export function WorkflowStepper({ status }: { status: EnquiryStatus }) {
                   "grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold",
                   done && "bg-brand-600 text-white",
                   current && "bg-white text-brand-700 ring-2 ring-brand-500",
-                  !done && !current && "bg-slate-100 text-slate-400",
+                  !done && !current && "bg-slate-100 text-slate-600",
                 )}
               >
                 {done ? <Check size={14} /> : i + 1}
@@ -60,7 +60,7 @@ export function WorkflowStepper({ status }: { status: EnquiryStatus }) {
               <div className={cn("h-0.5 flex-1", i === STEPS.length - 1 ? "invisible" : done ? "bg-brand-500" : "bg-slate-200")} />
             </div>
             <span
-              className={cn("mt-1.5 px-1 text-xs leading-tight", current ? "font-semibold text-brand-700" : done ? "text-slate-700" : "text-slate-400")}
+              className={cn("mt-1.5 px-1 text-xs leading-tight", current ? "font-semibold text-brand-700" : done ? "text-slate-700" : "text-slate-500")}
             >
               {label}
             </span>
@@ -104,7 +104,7 @@ export function RouteInsights({ enquiry }: { enquiry: Pick<Enquiry, "customerId"
             ))}
           </div>
         ) : (
-          <p className="text-sm text-slate-400">{enquiry.pol && enquiry.pod ? "No airline in the master serves this route." : "Select POL and POD."}</p>
+          <p className="text-sm text-slate-500">{enquiry.pol && enquiry.pod ? "No airline in the master serves this route." : "Select POL and POD."}</p>
         )}
       </div>
 
@@ -425,7 +425,7 @@ export function GetRatesModal({ enq, onClose, onForward, onManual }: { enq: Enqu
       open
       onClose={onClose}
       title="Compare Available Rate"
-      wide
+      xl
       footer={
         <div className="flex w-full flex-wrap items-center justify-between gap-2">
           <div className="flex gap-2">
@@ -477,12 +477,11 @@ export function GetRatesModal({ enq, onClose, onForward, onManual }: { enq: Enqu
           <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
             Matching rate sheets found for this POL and POD. Compare the rates below and select the most suitable option.
           </div>
-          <Table>
+          <Table compact>
             <thead>
               <tr>
                 <th>Compare</th>
                 <th>Airline</th>
-                <th>Currency</th>
                 <th className="text-right">Rate / kg</th>
                 <th className="text-right">AWB Fee</th>
                 <th className="text-right">Minimum Charge</th>
@@ -490,7 +489,6 @@ export function GetRatesModal({ enq, onClose, onForward, onManual }: { enq: Enqu
                 <th>Valid Until</th>
                 <th className="text-right">Estimated Total*</th>
                 {compareOnly && <th className="text-right">vs Best</th>}
-                <th>Source</th>
                 <th>Action</th>
               </tr>
             </thead>
@@ -508,11 +506,13 @@ export function GetRatesModal({ enq, onClose, onForward, onManual }: { enq: Enqu
                         aria-label={`Compare ${airline(r.airlineId)?.name}`}
                       />
                     </td>
-                    <td className="font-medium whitespace-nowrap">
-                      {airline(r.airlineId)?.name}
+                    <td className="whitespace-nowrap">
+                      <span className="font-medium">{airline(r.airlineId)?.name}</span>
                       {total === best && <Badge className="ml-1 bg-emerald-100 text-emerald-700 ring-emerald-200">Best</Badge>}
+                      <div className="text-xs text-slate-500">
+                        {r.currency} · {r.source}
+                      </div>
                     </td>
-                    <td>{r.currency}</td>
                     <td className="text-right tabular-nums" title={r.slabs.length ? `N ${r.ratePerKg} · ${r.slabs.map((x) => `${x.label} ${x.rate}`).join(" · ")}` : undefined}>
                       {rateForWeight(r, enq.chargeableWeight).toFixed(2)}
                     </td>
@@ -524,8 +524,7 @@ export function GetRatesModal({ enq, onClose, onForward, onManual }: { enq: Enqu
                     <td className="whitespace-nowrap">{fmtDate(r.validUntil)}</td>
                     <td className="text-right font-semibold whitespace-nowrap tabular-nums">{money(total, r.currency)}</td>
                     {compareOnly && <td className="text-right text-slate-500 tabular-nums">{total === best ? "—" : `+${(total - best).toFixed(2)}`}</td>}
-                    <td className="text-xs text-slate-500">{r.source}</td>
-                    <td>
+                    <td className="whitespace-nowrap">
                       <Button size="sm" onClick={() => use(r)} disabled={quotationLocked}>
                         Use Rate
                       </Button>

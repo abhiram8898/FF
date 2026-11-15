@@ -46,7 +46,7 @@ export const buttonCls = (variant: Variant, size: Size, className?: string) =>
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500",
     "disabled:cursor-not-allowed disabled:opacity-50",
     size === "sm" ? "h-7 px-2.5 text-xs" : "h-9 px-3 text-sm sm:h-8",
-    variant === "primary" && "bg-navy-900 text-white shadow-sm hover:bg-navy-700 dark:bg-brand-500 dark:hover:bg-brand-400",
+    variant === "primary" && "bg-navy-900 text-white shadow-sm hover:bg-navy-700 dark:bg-[#2a62e6] dark:hover:bg-[#2259e0]",
     variant === "secondary" && "bg-white text-slate-700 shadow-xs ring-1 ring-slate-300 ring-inset hover:bg-slate-50",
     variant === "ghost" && "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
     variant === "danger" && "bg-white text-red-600 ring-1 ring-red-200 ring-inset hover:bg-red-50",
@@ -162,7 +162,7 @@ export function Select({ className, ...props }: React.SelectHTMLAttributes<HTMLS
 }
 
 export function Textarea({ className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={cn(inputCls, "h-auto py-2", className)} {...props} />;
+  return <textarea className={cn(inputCls, "h-auto py-2 sm:h-auto", className)} {...props} />;
 }
 
 const SPINNER_SIZES = { xs: "size-3.5 border-2", sm: "size-4 border-2", md: "size-6 border-2", lg: "size-9 border-[3px]" };
@@ -209,7 +209,7 @@ export function StatusPage({
         <span className={cn("grid size-14 place-items-center rounded-full ring-8", tone === "red" ? "bg-red-50 text-red-600 ring-red-50/50" : "bg-brand-50 text-brand-600 ring-brand-50/50")}>
           <Icon size={26} aria-hidden />
         </span>
-        {code && <p className="mt-4 text-xs font-semibold tracking-widest text-slate-400 uppercase">{code}</p>}
+        {code && <p className="mt-4 text-xs font-semibold tracking-widest text-slate-500 uppercase">{code}</p>}
         <h1 className={cn("text-xl font-semibold text-slate-900", code ? "mt-1" : "mt-4")}>{title}</h1>
         <div className="mt-2 text-sm text-slate-500">{children}</div>
         <div className="mt-5 flex flex-wrap justify-center gap-2">{actions}</div>
@@ -244,6 +244,7 @@ export function Modal({
   children,
   footer,
   wide,
+  xl,
   confirmClose,
 }: {
   open: boolean;
@@ -252,6 +253,8 @@ export function Modal({
   children: React.ReactNode;
   footer?: React.ReactNode;
   wide?: boolean;
+  /** Extra wide, for dialogs that hold a full table */
+  xl?: boolean;
   /** When set (e.g. the form has unsaved changes), closing by overlay click, Escape or × asks this question first */
   confirmClose?: string | false;
 }) {
@@ -302,7 +305,7 @@ export function Modal({
       <div
         ref={dialogRef}
         tabIndex={-1}
-        className={cn("modal-panel my-auto w-full rounded-xl bg-white shadow-2xl outline-none", wide ? "max-w-4xl 2xl:max-w-5xl" : "max-w-lg")}
+        className={cn("modal-panel my-auto w-full rounded-xl bg-white shadow-2xl outline-none", xl ? "max-w-6xl 2xl:max-w-7xl" : wide ? "max-w-4xl 2xl:max-w-5xl" : "max-w-lg")}
         onMouseDown={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -371,7 +374,7 @@ function labelCells(table: HTMLTableElement) {
  * Data table. Scrolls sideways when it doesn't fit; on phones each row becomes a labelled card
  * (see .table-stack in globals.css). Pass stack={false} to keep the scrolling table on phones.
  */
-export function Table({ children, stack = true }: { children: React.ReactNode; stack?: boolean }) {
+export function Table({ children, stack = true, compact }: { children: React.ReactNode; stack?: boolean; compact?: boolean }) {
   const ref = useRef<HTMLTableElement>(null);
   useEffect(() => {
     const table = ref.current;
@@ -385,7 +388,7 @@ export function Table({ children, stack = true }: { children: React.ReactNode; s
   return (
     // `relative` keeps absolutely positioned children (e.g. sr-only labels) inside the scroll area
     <div className="relative overflow-x-auto">
-      <table ref={ref} className={cn(stack && "table-stack", "w-full text-left text-sm [&_tbody_tr]:border-t [&_tbody_tr]:border-slate-100 [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2 [&_th]:text-xs [&_th]:font-medium [&_th]:whitespace-nowrap [&_th]:text-slate-500 [&_thead]:bg-slate-50")}>
+      <table ref={ref} className={cn(stack && "table-stack", "w-full text-left text-sm [&_tbody_tr]:border-t [&_tbody_tr]:border-slate-100 [&_td]:py-2 [&_th]:py-2 [&_th]:text-xs", compact ? "[&_td]:px-2 [&_th]:px-2" : "[&_td]:px-3 [&_th]:px-3", "[&_th]:font-medium [&_th]:whitespace-nowrap [&_th]:text-slate-500 [&_thead]:bg-slate-50")}>
         {children}
       </table>
     </div>
@@ -423,8 +426,8 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: readon
           aria-selected={value === t}
           onClick={() => onChange(t)}
           className={cn(
-            "-mb-px border-b-2 px-3 py-1.5 text-sm font-medium whitespace-nowrap focus-visible:outline-2 focus-visible:outline-brand-500",
-            value === t ? "border-brand-600 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-800",
+            "-mb-px rounded-t-lg border-b-2 px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-brand-500",
+            value === t ? "border-brand-600 bg-brand-50 text-brand-700" : "border-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-800",
           )}
         >
           {t}
@@ -447,12 +450,12 @@ export function LinkTabs({ tabs, label }: { tabs: { href: string; label: string;
             href={t.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "-mb-px flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-sm font-medium whitespace-nowrap focus-visible:outline-2 focus-visible:outline-brand-500",
-              active ? "border-brand-600 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-800",
+              "-mb-px flex items-center gap-2 rounded-t-lg border-b-2 px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-brand-500",
+              active ? "border-brand-600 bg-brand-50 text-brand-700" : "border-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-800",
             )}
           >
             {t.label}
-            {t.count !== undefined && <span className={cn("rounded-full px-1.5 text-xs", active ? "bg-brand-50 text-brand-700" : "bg-slate-100 text-slate-500")}>{t.count}</span>}
+            {t.count !== undefined && <span className={cn("rounded-full px-1.5 text-xs font-semibold", active ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-500")}>{t.count}</span>}
           </Link>
         );
       })}
@@ -526,13 +529,13 @@ export function Kpi({
 }) {
   const body = (
     <>
-      <span className={cn("grid size-9 shrink-0 place-items-center rounded-full", KPI_TONES[tone])}>
-        <Icon size={17} aria-hidden />
+      <span className={cn("grid size-11 shrink-0 place-items-center rounded-full", KPI_TONES[tone])}>
+        <Icon size={20} aria-hidden />
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-lg leading-6 font-semibold text-slate-900 tabular-nums">{value}</span>
-        <span className="block text-xs leading-snug text-slate-500">{label}</span>
-        {hint && <span className="block text-xs leading-snug text-slate-400">{hint}</span>}
+        <span className="block truncate text-2xl leading-8 font-bold tracking-tight text-slate-900 tabular-nums">{value}</span>
+        <span className="block text-sm leading-snug font-medium text-slate-600">{label}</span>
+        {hint && <span className="block text-xs leading-snug text-slate-500">{hint}</span>}
       </span>
     </>
   );
@@ -561,7 +564,7 @@ const KPI_COLS = {
   6: "grid-cols-2 sm:grid-cols-3 xl:grid-cols-6",
 };
 
-export function KpiGrid({ cols = 3, children }: { cols?: keyof typeof KPI_COLS; children: React.ReactNode }) {
+export function KpiGrid({ cols = 4, children }: { cols?: keyof typeof KPI_COLS; children: React.ReactNode }) {
   return <div className={cn("stagger-in mb-3 grid gap-3", KPI_COLS[cols])}>{children}</div>;
 }
 

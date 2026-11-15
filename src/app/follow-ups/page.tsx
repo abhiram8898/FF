@@ -68,13 +68,13 @@ export default function FollowUpsPage() {
           <Table>
             <thead>
               <tr>
-                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Reference</th>
                 <th>Type</th>
                 <th>Waiting On</th>
                 <th>Sent</th>
                 <th>Reminders</th>
                 <th>Next Reminder</th>
+                <th className="w-px whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -83,12 +83,6 @@ export default function FollowUpsPage() {
                 const href = f.quotation ? `/quotations/${f.quotation.id}` : `/enquiries/${f.enquiry.id}`;
                 return (
                   <tr key={`${f.kind}-${f.enquiry.id}-${f.airlineId ?? ""}`} className="hover:bg-slate-50">
-                    <td className="whitespace-nowrap">
-                      <RowActions
-                        label={`Actions for ${f.quotation?.ref ?? f.enquiry.ref}`}
-                        items={[{ label: f.quotation ? "Open quotation" : "Open enquiry", href }, ...(f.quotation ? [{ label: "Open enquiry", href: `/enquiries/${f.enquiry.id}` }] : [])]}
-                      />
-                    </td>
                     <td className="whitespace-nowrap">
                       <Link href={href} className={linkCls}>
                         {f.quotation?.ref ?? f.enquiry.ref}
@@ -105,6 +99,12 @@ export default function FollowUpsPage() {
                       <Badge className={cn(due ? "bg-red-50 text-red-700 ring-red-200" : "bg-slate-100 text-slate-700 ring-slate-200")}>
                         {due ? "Due" : "Upcoming"} · {fmtDateTime(f.dueAt)}
                       </Badge>
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <RowActions
+                        label={`Actions for ${f.quotation?.ref ?? f.enquiry.ref}`}
+                        items={[{ label: f.quotation ? "Open quotation" : "Open enquiry", href }, ...(f.quotation ? [{ label: "Open enquiry", href: `/enquiries/${f.enquiry.id}` }] : [])]}
+                      />
                     </td>
                   </tr>
                 );

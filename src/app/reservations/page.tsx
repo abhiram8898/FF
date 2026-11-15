@@ -2,17 +2,65 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { CalendarDays, CalendarRange, ChevronLeft, ChevronRight, CircleCheck, CircleX, Clock, ExternalLink, List, Package, Plane, Plus, Repeat, Ship, X } from "lucide-react";
+import {
+  CalendarDays,
+  CalendarRange,
+  ChevronLeft,
+  ChevronRight,
+  CircleCheck,
+  CircleX,
+  Clock,
+  ExternalLink,
+  List,
+  Package,
+  Plane,
+  Plus,
+  Repeat,
+  Ship,
+  X,
+} from "lucide-react";
 import { useLookups, useStore } from "@/lib/store";
-import { RESERVATION_STATUSES, type Reservation, type ReservationStatus } from "@/lib/types";
-import { RESERVATION_TONE, addDays, cn, fmtDate, matches, today } from "@/lib/utils";
-import { Badge, Button, Card, FilterBar, FilterSelect, Kpi, KpiGrid, LinkButton, NoResults, PageHeader, RowActions, SearchField, Table, buttonCls, linkCls } from "@/components/ui";
+import {
+  RESERVATION_STATUSES,
+  type Reservation,
+  type ReservationStatus,
+} from "@/lib/types";
+import {
+  RESERVATION_TONE,
+  addDays,
+  cn,
+  fmtDate,
+  matches,
+  today,
+} from "@/lib/utils";
+import {
+  Badge,
+  Button,
+  Card,
+  FilterBar,
+  FilterSelect,
+  Kpi,
+  KpiGrid,
+  LinkButton,
+  NoResults,
+  PageHeader,
+  RowActions,
+  SearchField,
+  Table,
+  buttonCls,
+  linkCls,
+} from "@/components/ui";
 import { CancelModal, RescheduleModal } from "@/components/reservation";
 
 type View = "Month" | "Week" | "List";
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const utc = (s: string) => new Date(`${s}T00:00:00Z`);
-const PENDING: ReservationStatus[] = ["Reserved", "Ready for Booking", "Booking In Progress", "Rescheduled"];
+const PENDING: ReservationStatus[] = [
+  "Reserved",
+  "Ready for Booking",
+  "Booking In Progress",
+  "Rescheduled",
+];
 
 /** Days shown: the anchor's month, or its Monday–Sunday week */
 function daysFor(view: View, anchor: string) {
@@ -20,18 +68,29 @@ function daysFor(view: View, anchor: string) {
   if (view === "Week") {
     const monday = new Date(a);
     monday.setUTCDate(a.getUTCDate() - ((a.getUTCDay() + 6) % 7));
-    return Array.from({ length: 7 }, (_, i) => iso(new Date(monday.getTime() + i * 86_400_000)));
+    return Array.from({ length: 7 }, (_, i) =>
+      iso(new Date(monday.getTime() + i * 86_400_000)),
+    );
   }
   const first = new Date(Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), 1));
-  const n = new Date(Date.UTC(a.getUTCFullYear(), a.getUTCMonth() + 1, 0)).getUTCDate();
-  return Array.from({ length: n }, (_, i) => iso(new Date(first.getTime() + i * 86_400_000)));
+  const n = new Date(
+    Date.UTC(a.getUTCFullYear(), a.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  return Array.from({ length: n }, (_, i) =>
+    iso(new Date(first.getTime() + i * 86_400_000)),
+  );
 }
 
 export default function PlannerPage() {
   const { state } = useStore();
   const { customer } = useLookups();
   // Phones open on the list: a month grid only fits a day or two across. (The page renders client-side, after sign-in.)
-  const [view, setView] = useState<View>(() => (typeof window !== "undefined" && window.matchMedia("(max-width: 639.98px)").matches ? "List" : "Month"));
+  const [view, setView] = useState<View>(() =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(max-width: 639.98px)").matches
+      ? "List"
+      : "Month",
+  );
   const [anchor, setAnchor] = useState(today());
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<"all" | ReservationStatus>("all");
@@ -40,16 +99,62 @@ export default function PlannerPage() {
   const [kpi, setKpi] = useState<string | null>(null);
   const selected = state.reservations.find((r) => r.id === selectedId);
 
-  const days = useMemo(() => daysFor(view === "List" ? "Month" : view, anchor), [view, anchor]);
+  const days = useMemo(
+    () => daysFor(view === "List" ? "Month" : view, anchor),
+    [view, anchor],
+  );
   const [from, to] = [days[0], days.at(-1)!];
-  const inPeriod = state.reservations.filter((r) => r.shipmentDate >= from && r.shipmentDate <= to);
+  const inPeriod = state.reservations.filter(
+    (r) => r.shipmentDate >= from && r.shipmentDate <= to,
+  );
   const t = today();
-  const KPIS: { id: string; icon: typeof Package; tone: React.ComponentProps<typeof Kpi>["tone"]; label: string; test: (r: Reservation) => boolean; all?: boolean }[] = [
-    { id: "total", icon: CalendarDays, tone: "blue", label: "Total Reserved", test: (r) => r.status !== "Cancelled" },
-    { id: "upcoming", icon: Clock, tone: "indigo", label: "Upcoming (7 Days)", test: (r) => r.status !== "Cancelled" && r.shipmentDate >= t && r.shipmentDate <= addDays(7), all: true },
-    { id: "pending", icon: Package, tone: "amber", label: "Booking Pending", test: (r) => PENDING.includes(r.status) },
-    { id: "confirmed", icon: CircleCheck, tone: "green", label: "Booking Confirmed", test: (r) => r.status === "Booking Confirmed" },
-    { id: "cancelled", icon: CircleX, tone: "red", label: "Cancelled", test: (r) => r.status === "Cancelled" },
+  const KPIS: {
+    id: string;
+    icon: typeof Package;
+    tone: React.ComponentProps<typeof Kpi>["tone"];
+    label: string;
+    test: (r: Reservation) => boolean;
+    all?: boolean;
+  }[] = [
+    {
+      id: "total",
+      icon: CalendarDays,
+      tone: "blue",
+      label: "Total Reserved",
+      test: (r) => r.status !== "Cancelled",
+    },
+    {
+      id: "upcoming",
+      icon: Clock,
+      tone: "indigo",
+      label: "Upcoming (7 Days)",
+      test: (r) =>
+        r.status !== "Cancelled" &&
+        r.shipmentDate >= t &&
+        r.shipmentDate <= addDays(7),
+      all: true,
+    },
+    {
+      id: "pending",
+      icon: Package,
+      tone: "amber",
+      label: "Booking Pending",
+      test: (r) => PENDING.includes(r.status),
+    },
+    {
+      id: "confirmed",
+      icon: CircleCheck,
+      tone: "green",
+      label: "Booking Confirmed",
+      test: (r) => r.status === "Booking Confirmed",
+    },
+    {
+      id: "cancelled",
+      icon: CircleX,
+      tone: "red",
+      label: "Cancelled",
+      test: (r) => r.status === "Cancelled",
+    },
   ];
   const kpiDef = KPIS.find((k) => k.id === kpi);
   // "Upcoming" looks a week ahead regardless of the month shown; the rest count the period on screen
@@ -59,9 +164,17 @@ export default function PlannerPage() {
       (!kpiDef || kpiDef.test(r)) &&
       (status === "all" || r.status === status) &&
       (mode === "all" || r.cargoMode === mode) &&
-      matches(q, [customer(r.customerId)?.name, r.ref, r.pol, r.pod, r.commodity]),
+      matches(q, [
+        customer(r.customerId)?.name,
+        r.ref,
+        r.pol,
+        r.pod,
+        r.commodity,
+      ]),
   );
-  const customerIds = [...new Set(visible.map((r) => r.customerId))].sort((a, b) => (customer(a)?.name ?? "").localeCompare(customer(b)?.name ?? ""));
+  const customerIds = [...new Set(visible.map((r) => r.customerId))].sort(
+    (a, b) => (customer(a)?.name ?? "").localeCompare(customer(b)?.name ?? ""),
+  );
 
   const shift = (by: -1 | 1) => {
     const a = utc(anchor);
@@ -72,13 +185,22 @@ export default function PlannerPage() {
   const periodLabel =
     view === "Week"
       ? `${fmtDate(from)} – ${fmtDate(to)}`
-      : utc(anchor).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+      : utc(anchor).toLocaleDateString("en-GB", {
+          month: "long",
+          year: "numeric",
+          timeZone: "UTC",
+        });
   const viewBtn = (v: View, Icon: typeof List) => (
     <button
       key={v}
       onClick={() => setView(v)}
       aria-pressed={view === v}
-      className={cn("inline-flex h-9 items-center gap-1.5 px-3 text-sm font-medium sm:h-8 first:rounded-l-lg last:rounded-r-lg", view === v ? "bg-navy-900 text-white" : "bg-white text-slate-700 hover:bg-slate-50")}
+      className={cn(
+        "inline-flex h-9 items-center gap-1.5 px-3 text-sm font-medium sm:h-8 first:rounded-l-lg last:rounded-r-lg",
+        view === v
+          ? "bg-navy-900 text-white"
+          : "bg-white text-slate-700 hover:bg-slate-50",
+      )}
     >
       <Icon size={14} aria-hidden /> {v}
     </button>
@@ -88,7 +210,7 @@ export default function PlannerPage() {
     <>
       <PageHeader
         title="Shipment Planner"
-        subtitle="Plan, view and manage reserved (fixed) shipments a month ahead. Create Reservation → Plan → Carrier Booking → Booking Confirmation → Job → AWB → Completion."
+        subtitle="Plan, view and manage reserved shipments a month ahead."
         actions={
           <LinkButton href="/reservations/new">
             <Plus size={16} aria-hidden /> New Reservation
@@ -98,7 +220,17 @@ export default function PlannerPage() {
 
       <KpiGrid cols={5}>
         {KPIS.map((k) => (
-          <Kpi key={k.id} icon={k.icon} tone={k.tone} label={k.label} value={(k.all ? state.reservations : inPeriod).filter(k.test).length} active={kpi === k.id} onClick={() => setKpi(kpi === k.id ? null : k.id)} />
+          <Kpi
+            key={k.id}
+            icon={k.icon}
+            tone={k.tone}
+            label={k.label}
+            value={
+              (k.all ? state.reservations : inPeriod).filter(k.test).length
+            }
+            active={kpi === k.id}
+            onClick={() => setKpi(kpi === k.id ? null : k.id)}
+          />
         ))}
       </KpiGrid>
 
@@ -107,42 +239,75 @@ export default function PlannerPage() {
           Today
         </Button>
         <div className="flex">
-          <Button variant="secondary" className="rounded-r-none px-2" onClick={() => shift(-1)} aria-label="Previous">
+          <Button
+            variant="secondary"
+            className="rounded-r-none px-2"
+            onClick={() => shift(-1)}
+            aria-label="Previous"
+          >
             <ChevronLeft size={16} />
           </Button>
-          <Button variant="secondary" className="-ml-px rounded-l-none px-2" onClick={() => shift(1)} aria-label="Next">
+          <Button
+            variant="secondary"
+            className="-ml-px rounded-l-none px-2"
+            onClick={() => shift(1)}
+            aria-label="Next"
+          >
             <ChevronRight size={16} />
           </Button>
         </div>
         <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
           <CalendarRange size={15} aria-hidden /> {periodLabel}
         </span>
-        <div className="ml-auto flex overflow-hidden rounded-lg ring-1 ring-slate-300">{[viewBtn("Month", CalendarDays), viewBtn("Week", CalendarRange), viewBtn("List", List)]}</div>
+        <div className="ml-auto flex overflow-hidden rounded-lg ring-1 ring-slate-300">
+          {[
+            viewBtn("Month", CalendarDays),
+            viewBtn("Week", CalendarRange),
+            viewBtn("List", List),
+          ]}
+        </div>
       </div>
 
       <FilterBar>
-        <SearchField label="Search customer" value={q} onChange={setQ} placeholder="Search customer, reservation, route…" />
-        <FilterSelect label="Status" value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
+        <SearchField
+          label="Search customer"
+          value={q}
+          onChange={setQ}
+          placeholder="Search customer, reservation, route…"
+        />
+        <FilterSelect
+          label="Status"
+          value={status}
+          onChange={(e) => setStatus(e.target.value as typeof status)}
+        >
           <option value="all">All Status</option>
           {RESERVATION_STATUSES.map((s) => (
             <option key={s}>{s}</option>
           ))}
         </FilterSelect>
-        <FilterSelect label="Shipment mode" value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
+        <FilterSelect
+          label="Shipment mode"
+          value={mode}
+          onChange={(e) => setMode(e.target.value as typeof mode)}
+        >
           <option value="all">Air & Sea</option>
           <option value="Air">Air Freight</option>
           <option value="Sea">Sea Freight</option>
         </FilterSelect>
       </FilterBar>
 
-      <div className={cn("grid grid-cols-1 gap-3", selected && "xl:grid-cols-[minmax(0,1fr)_19rem]")}>
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-3",
+          selected && "xl:grid-cols-[minmax(0,1fr)_19rem]",
+        )}
+      >
         {view === "List" ? (
           <Card bodyClassName="p-0">
             {visible.length ? (
               <Table>
                 <thead>
                   <tr>
-                    <th className="w-px whitespace-nowrap">Actions</th>
                     <th>Reservation</th>
                     <th>Date</th>
                     <th>Customer</th>
@@ -150,63 +315,133 @@ export default function PlannerPage() {
                     <th>Airline</th>
                     <th>Cargo</th>
                     <th>Status</th>
+                    <th className="w-px whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {[...visible]
-                    .sort((a, b) => a.shipmentDate.localeCompare(b.shipmentDate))
+                    .sort((a, b) =>
+                      a.shipmentDate.localeCompare(b.shipmentDate),
+                    )
                     .map((r) => (
                       <tr key={r.id} className="hover:bg-slate-50">
                         <td className="whitespace-nowrap">
-                          <RowActions
-                            label={`Actions for ${r.ref}`}
-                            items={[
-                              { label: "View details", href: `/reservations/${r.id}` },
-                              { label: "Edit", href: `/reservations/${r.id}/edit` },
-                            ]}
-                          />
-                        </td>
-                        <td className="whitespace-nowrap">
-                          <Link href={`/reservations/${r.id}`} className={`${linkCls} font-mono text-xs`}>
+                          <Link
+                            href={`/reservations/${r.id}`}
+                            className={`${linkCls} font-mono text-xs`}
+                          >
                             {r.ref}
                           </Link>
-                          {r.seriesId && <Repeat size={12} className="ml-1 inline text-slate-400" aria-label="Recurring" />}
+                          {r.seriesId && (
+                            <Repeat
+                              size={12}
+                              className="ml-1 inline text-slate-400"
+                              aria-label="Recurring"
+                            />
+                          )}
                         </td>
-                        <td className="whitespace-nowrap">{fmtDate(r.shipmentDate)}</td>
-                        <td className="max-w-44 truncate">{customer(r.customerId)?.name}</td>
+                        <td className="whitespace-nowrap">
+                          {fmtDate(r.shipmentDate)}
+                        </td>
+                        <td className="max-w-44 truncate">
+                          {customer(r.customerId)?.name}
+                        </td>
                         <td className="whitespace-nowrap">
                           {r.pol} → {r.pod}
                         </td>
-                        <td>{state.airlines.find((a) => a.id === r.airlineId)?.name}</td>
+                        <td>
+                          {
+                            state.airlines.find((a) => a.id === r.airlineId)
+                              ?.name
+                          }
+                        </td>
                         <td className="text-xs whitespace-nowrap text-slate-600">
                           {r.packages} pkgs / {r.grossWeight} kg
                         </td>
                         <td>
-                          <Badge className={RESERVATION_TONE[r.status]}>{r.status}</Badge>
+                          <Badge className={RESERVATION_TONE[r.status]}>
+                            {r.status}
+                          </Badge>
+                        </td>
+                        <td className="whitespace-nowrap">
+                          <RowActions
+                            label={`Actions for ${r.ref}`}
+                            items={[
+                              {
+                                label: "View details",
+                                href: `/reservations/${r.id}`,
+                              },
+                              {
+                                label: "Edit",
+                                href: `/reservations/${r.id}/edit`,
+                              },
+                            ]}
+                          />
                         </td>
                       </tr>
                     ))}
                 </tbody>
               </Table>
             ) : (
-              <NoResults filtered onClear={() => (setQ(""), setStatus("all"), setMode("all"), setKpi(null))}>
+              <NoResults
+                filtered
+                onClear={() => (
+                  setQ(""),
+                  setStatus("all"),
+                  setMode("all"),
+                  setKpi(null)
+                )}
+              >
                 No reservations.
               </NoResults>
             )}
           </Card>
         ) : (
           <Card bodyClassName="p-0">
-            <div className="relative overflow-x-auto" tabIndex={0} aria-label="Shipment planner calendar, scrolls sideways">
-              <div className="grid w-max min-w-full" style={{ gridTemplateColumns: `min(13rem, 34vw) repeat(${days.length}, minmax(${view === "Week" ? "8.5rem" : "5.5rem"}, 1fr))` }}>
-                <div className="sticky left-0 z-10 border-r border-b border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Customers ({customerIds.length})</div>
+            <div
+              className="relative overflow-x-auto"
+              tabIndex={0}
+              aria-label="Shipment planner calendar, scrolls sideways"
+            >
+              <div
+                className="grid w-max min-w-full"
+                style={{
+                  gridTemplateColumns: `min(13rem, 34vw) repeat(${days.length}, minmax(${view === "Week" ? "8.5rem" : "5.5rem"}, 1fr))`,
+                }}
+              >
+                <div className="sticky left-0 z-10 border-r border-b border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+                  Customers ({customerIds.length})
+                </div>
                 {days.map((d) => {
                   const dt = utc(d);
                   const isToday = d === t;
                   return (
-                    <div key={d} className={cn("border-b border-l border-slate-100 px-1.5 py-1.5 text-center text-xs", isToday ? "bg-brand-50 font-semibold text-brand-700" : "text-slate-500", [0, 6].includes(dt.getUTCDay()) && !isToday && "bg-slate-50/70")}>
-                      {isToday && <div className="mx-auto mb-0.5 w-fit rounded bg-brand-600 px-1.5 text-[0.6875rem] text-white">Today</div>}
-                      <div>{dt.toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" })}</div>
-                      <div className="text-sm text-slate-800">{String(dt.getUTCDate()).padStart(2, "0")}</div>
+                    <div
+                      key={d}
+                      className={cn(
+                        "border-b border-l border-slate-100 px-1.5 py-1.5 text-center text-xs",
+                        isToday
+                          ? "bg-brand-50 font-semibold text-brand-700"
+                          : "text-slate-500",
+                        [0, 6].includes(dt.getUTCDay()) &&
+                          !isToday &&
+                          "bg-slate-50/70",
+                      )}
+                    >
+                      {isToday && (
+                        <div className="mx-auto mb-0.5 w-fit rounded bg-brand-600 px-1.5 text-[0.6875rem] text-white">
+                          Today
+                        </div>
+                      )}
+                      <div>
+                        {dt.toLocaleDateString("en-GB", {
+                          weekday: "short",
+                          timeZone: "UTC",
+                        })}
+                      </div>
+                      <div className="text-sm text-slate-800">
+                        {String(dt.getUTCDate()).padStart(2, "0")}
+                      </div>
                     </div>
                   );
                 })}
@@ -214,16 +449,30 @@ export default function PlannerPage() {
                   customerIds.map((cid) => {
                     const mine = visible.filter((r) => r.customerId === cid);
                     return [
-                      <div key={`${cid}-name`} className="sticky left-0 z-10 flex items-center justify-between gap-2 border-r border-b border-slate-100 bg-white px-3 py-2 text-sm">
-                        <span className="truncate font-medium text-slate-800" title={customer(cid)?.name}>
+                      <div
+                        key={`${cid}-name`}
+                        className="sticky left-0 z-10 flex items-center justify-between gap-2 border-r border-b border-slate-100 bg-white px-3 py-2 text-sm"
+                      >
+                        <span
+                          className="truncate font-medium text-slate-800"
+                          title={customer(cid)?.name}
+                        >
                           {customer(cid)?.name}
                         </span>
-                        <span className="rounded-full bg-slate-100 px-1.5 text-xs text-slate-600">{mine.length}</span>
+                        <span className="rounded-full bg-slate-100 px-1.5 text-xs text-slate-600">
+                          {mine.length}
+                        </span>
                       </div>,
                       ...days.map((d) => {
                         const items = mine.filter((r) => r.shipmentDate === d);
                         return (
-                          <div key={`${cid}-${d}`} className={cn("group relative min-h-16 space-y-1 border-b border-l border-slate-100 p-1", d === t && "bg-brand-50/40")}>
+                          <div
+                            key={`${cid}-${d}`}
+                            className={cn(
+                              "group relative min-h-16 space-y-1 border-b border-l border-slate-100 p-1",
+                              d === t && "bg-brand-50/40",
+                            )}
+                          >
                             {items.map((r) => (
                               <button
                                 key={r.id}
@@ -231,18 +480,34 @@ export default function PlannerPage() {
                                 className={cn(
                                   "block w-full rounded-md px-1.5 py-1 text-left text-xs leading-tight ring-1 ring-inset focus-visible:outline-2 focus-visible:outline-brand-500",
                                   RESERVATION_TONE[r.status],
-                                  selectedId === r.id && "outline-2 outline-brand-600",
-                                  r.status === "Cancelled" && "line-through opacity-70",
+                                  selectedId === r.id &&
+                                    "outline-2 outline-brand-600",
+                                  r.status === "Cancelled" &&
+                                    "line-through opacity-70",
                                 )}
                                 title={`${r.ref} · ${r.status}`}
                               >
                                 <span className="flex items-center gap-1 font-semibold">
-                                  {r.cargoMode === "Air" ? <Plane size={11} aria-hidden /> : <Ship size={11} aria-hidden />}
+                                  {r.cargoMode === "Air" ? (
+                                    <Plane size={11} aria-hidden />
+                                  ) : (
+                                    <Ship size={11} aria-hidden />
+                                  )}
                                   {r.pol} → {r.pod}
-                                  {r.seriesId && <Repeat size={10} className="ml-auto shrink-0" aria-label="Recurring" />}
+                                  {r.seriesId && (
+                                    <Repeat
+                                      size={10}
+                                      className="ml-auto shrink-0"
+                                      aria-label="Recurring"
+                                    />
+                                  )}
                                 </span>
-                                <span className="block truncate font-mono text-[0.6875rem] opacity-80">{r.ref.split("-").slice(-2).join("-")}</span>
-                                <span className="block text-[0.6875rem]">{r.status}</span>
+                                <span className="block truncate font-mono text-[0.6875rem] opacity-90">
+                                  {r.ref.split("-").slice(-2).join("-")}
+                                </span>
+                                <span className="block text-[0.6875rem]">
+                                  {r.status}
+                                </span>
                               </button>
                             ))}
                             <Link
@@ -259,8 +524,19 @@ export default function PlannerPage() {
                   })
                 ) : (
                   <div className="col-span-full p-3">
-                    <NoResults filtered={!!q || status !== "all" || mode !== "all" || !!kpi} onClear={() => (setQ(""), setStatus("all"), setMode("all"), setKpi(null))}>
-                      No reservations in this period. Use New Reservation to plan one.
+                    <NoResults
+                      filtered={
+                        !!q || status !== "all" || mode !== "all" || !!kpi
+                      }
+                      onClear={() => (
+                        setQ(""),
+                        setStatus("all"),
+                        setMode("all"),
+                        setKpi(null)
+                      )}
+                    >
+                      No reservations in this period. Use New Reservation to
+                      plan one.
                     </NoResults>
                   </div>
                 )}
@@ -278,7 +554,15 @@ export default function PlannerPage() {
                 <Repeat size={12} aria-hidden /> Recurring
               </span>
               <span className="ml-2 font-medium">Status:</span>
-              {(["Reserved", "Booking In Progress", "Booking Confirmed", "On Hold", "Cancelled"] as const).map((s) => (
+              {(
+                [
+                  "Reserved",
+                  "Booking In Progress",
+                  "Booking Confirmed",
+                  "On Hold",
+                  "Cancelled",
+                ] as const
+              ).map((s) => (
                 <Badge key={s} className={RESERVATION_TONE[s]}>
                   {s}
                 </Badge>
@@ -287,7 +571,9 @@ export default function PlannerPage() {
           </Card>
         )}
 
-        {selected && <PlannerPanel r={selected} onClose={() => setSelectedId(null)} />}
+        {selected && (
+          <PlannerPanel r={selected} onClose={() => setSelectedId(null)} />
+        )}
       </div>
     </>
   );
@@ -309,15 +595,26 @@ function PlannerPanel({ r, onClose }: { r: Reservation; onClose: () => void }) {
     ["Booking Status", r.bookingStatus],
   ];
   return (
-    <aside className="h-fit rounded-xl border border-slate-200 bg-white p-3 shadow-sm xl:sticky xl:top-20" aria-label={`Reservation ${r.ref}`}>
+    <aside
+      className="h-fit rounded-xl border border-slate-200 bg-white p-3 shadow-sm xl:sticky xl:top-20"
+      aria-label={`Reservation ${r.ref}`}
+    >
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="truncate font-mono text-xs font-semibold text-brand-700">{r.ref}</div>
-          <div className="truncate text-sm font-semibold text-slate-900">{customer(r.customerId)?.name}</div>
+          <div className="truncate font-mono text-xs font-semibold text-brand-700">
+            {r.ref}
+          </div>
+          <div className="truncate text-sm font-semibold text-slate-900">
+            {customer(r.customerId)?.name}
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <Badge className={RESERVATION_TONE[r.status]}>{r.status}</Badge>
-          <button onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-100" aria-label="Close panel">
+          <button
+            onClick={onClose}
+            className="rounded p-1 text-slate-400 hover:bg-slate-100"
+            aria-label="Close panel"
+          >
             <X size={14} />
           </button>
         </div>
@@ -326,7 +623,14 @@ function PlannerPanel({ r, onClose }: { r: Reservation; onClose: () => void }) {
         {rows.map(([k, v]) => (
           <div key={k} className="flex justify-between gap-3">
             <dt className="text-slate-500">{k}</dt>
-            <dd className="text-right font-medium text-slate-900" title={k === "Route" ? `${portLabel(r.pol)} → ${portLabel(r.pod)}` : undefined}>
+            <dd
+              className="text-right font-medium text-slate-900"
+              title={
+                k === "Route"
+                  ? `${portLabel(r.pol)} → ${portLabel(r.pod)}`
+                  : undefined
+              }
+            >
               {v}
             </dd>
           </div>
@@ -334,29 +638,60 @@ function PlannerPanel({ r, onClose }: { r: Reservation; onClose: () => void }) {
       </dl>
       <div className="mt-3 space-y-2">
         {a?.portalUrl && !closed && (
-          <a href={a.portalUrl} target="_blank" rel="noopener noreferrer" className={buttonCls("primary", "sm", "w-full")}>
+          <a
+            href={a.portalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={buttonCls("primary", "sm", "w-full")}
+          >
             <ExternalLink size={13} aria-hidden /> Open Airline Portal
           </a>
         )}
         <div className="grid grid-cols-2 gap-2">
-          <LinkButton href={`/reservations/${r.id}/edit`} variant="secondary" size="sm">
+          <LinkButton
+            href={`/reservations/${r.id}/edit`}
+            variant="secondary"
+            size="sm"
+          >
             Edit
           </LinkButton>
-          <Button variant="secondary" size="sm" disabled={closed || !!r.jobId} title={r.jobId ? "This reservation has a job; change the date on the job" : undefined} onClick={() => setDialog("reschedule")}>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={closed || !!r.jobId}
+            title={
+              r.jobId
+                ? "This reservation has a job; change the date on the job"
+                : undefined
+            }
+            onClick={() => setDialog("reschedule")}
+          >
             Reschedule
           </Button>
         </div>
         {!closed && !r.jobId && (
-          <Button variant="danger" size="sm" className="w-full" onClick={() => setDialog("cancel")}>
+          <Button
+            variant="danger"
+            size="sm"
+            className="w-full"
+            onClick={() => setDialog("cancel")}
+          >
             Cancel Shipment
           </Button>
         )}
-        <Link href={`/reservations/${r.id}`} className={`${linkCls} block text-center text-sm`}>
+        <Link
+          href={`/reservations/${r.id}`}
+          className={`${linkCls} block text-center text-sm`}
+        >
           View Details →
         </Link>
       </div>
-      {dialog === "reschedule" && <RescheduleModal r={r} onClose={() => setDialog(null)} />}
-      {dialog === "cancel" && <CancelModal r={r} onClose={() => setDialog(null)} />}
+      {dialog === "reschedule" && (
+        <RescheduleModal r={r} onClose={() => setDialog(null)} />
+      )}
+      {dialog === "cancel" && (
+        <CancelModal r={r} onClose={() => setDialog(null)} />
+      )}
     </aside>
   );
 }

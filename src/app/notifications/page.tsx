@@ -61,12 +61,12 @@ export default function NotificationsPage() {
           <Table>
             <thead>
               <tr>
-                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Sent</th>
                 <th>Channel</th>
                 <th>To</th>
                 <th>Enquiry ID</th>
                 <th>Message</th>
+                <th className="w-px whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -74,7 +74,6 @@ export default function NotificationsPage() {
                 const e = enquiry(n.enquiryId);
                 return (
                   <tr key={n.id} className="hover:bg-slate-50">
-                    <td className="whitespace-nowrap">{e && <RowActions label={`Actions for notification to ${n.to}`} items={[{ label: "View enquiry", href: `/enquiries/${e.id}` }]} />}</td>
                     <td className="whitespace-nowrap text-slate-600">{fmtDateTime(n.at)}</td>
                     <td>
                       <Badge className={n.channel === "WhatsApp" ? "bg-green-50 text-green-700 ring-green-200" : "bg-sky-50 text-sky-800 ring-sky-200"}>{n.channel}</Badge>
@@ -90,6 +89,7 @@ export default function NotificationsPage() {
                       )}
                     </td>
                     <td className="min-w-64 text-slate-700">{n.message}</td>
+                    <td className="whitespace-nowrap">{e && <RowActions label={`Actions for notification to ${n.to}`} items={[{ label: "View enquiry", href: `/enquiries/${e.id}` }]} />}</td>
                   </tr>
                 );
               })}

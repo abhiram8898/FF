@@ -66,7 +66,6 @@ function Ports() {
           <Table>
             <thead>
               <tr>
-                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Port Name</th>
                 <th>Port Code</th>
                 <th>Country Name</th>
@@ -75,11 +74,22 @@ function Ports() {
                 <th>ISD Code</th>
                 <th>Status</th>
                 <th className="text-right">Used</th>
+                <th className="w-px whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((p) => (
                 <tr key={p.code} className="hover:bg-slate-50">
+                  <td className="font-medium">{p.name}</td>
+                  <td className="font-mono">{p.code}</td>
+                  <td>{p.country}</td>
+                  <td className="font-mono">{p.countryCode}</td>
+                  <td>{p.region}</td>
+                  <td>{p.isd}</td>
+                  <td>
+                    <Badge className={p.status === "Active" ? ACTIVE : INACTIVE}>{p.status}</Badge>
+                  </td>
+                  <td className="text-right tabular-nums">{usage(p.code)}</td>
                   <td className="whitespace-nowrap">
                     <RowActions
                       label={`Actions for ${p.code}`}
@@ -92,16 +102,6 @@ function Ports() {
                       ]}
                     />
                   </td>
-                  <td className="font-medium">{p.name}</td>
-                  <td className="font-mono">{p.code}</td>
-                  <td>{p.country}</td>
-                  <td className="font-mono">{p.countryCode}</td>
-                  <td>{p.region}</td>
-                  <td>{p.isd}</td>
-                  <td>
-                    <Badge className={p.status === "Active" ? ACTIVE : INACTIVE}>{p.status}</Badge>
-                  </td>
-                  <td className="text-right tabular-nums">{usage(p.code)}</td>
                 </tr>
               ))}
             </tbody>
@@ -193,21 +193,18 @@ function Currencies() {
         <Table>
           <thead>
             <tr>
-              <th className="w-px whitespace-nowrap">Actions</th>
               <th>Currency Code</th>
               <th>Currency Name</th>
               <th>Symbol</th>
               <th className="text-right">Decimal Places</th>
               <th className="text-right">ROE (to INR)</th>
               <th>Status</th>
+              <th className="w-px whitespace-nowrap">Actions</th>
             </tr>
           </thead>
           <tbody>
             {state.currencies.map((c) => (
               <tr key={c.code} className="hover:bg-slate-50">
-                <td className="whitespace-nowrap">
-                  <RowActions label={`Actions for ${c.code}`} items={[{ label: "Edit", onSelect: () => setEditing(c) }]} />
-                </td>
                 <td className="font-mono font-medium">{c.code}</td>
                 <td>{c.name}</td>
                 <td>{c.symbol}</td>
@@ -215,6 +212,9 @@ function Currencies() {
                 <td className="text-right tabular-nums">{c.roe}</td>
                 <td>
                   <Badge className={c.active ? ACTIVE : INACTIVE}>{c.active ? "Active" : "Inactive"}</Badge>
+                </td>
+                <td className="whitespace-nowrap">
+                  <RowActions label={`Actions for ${c.code}`} items={[{ label: "Edit", onSelect: () => setEditing(c) }]} />
                 </td>
               </tr>
             ))}

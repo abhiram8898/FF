@@ -137,7 +137,7 @@ function QuotationEditor({ q }: { q: Quotation }) {
       />
 
       <div className="space-y-3">
-        <Card title="Enquiry Details" actions={<span className="text-xs text-slate-400">Auto-populated from enquiry</span>}>
+        <Card title="Enquiry Details" actions={<span className="text-xs text-slate-500">Auto-populated from enquiry</span>}>
           <KeyValue cols={4} items={banner} />
         </Card>
 
@@ -225,7 +225,7 @@ function QuotationEditor({ q }: { q: Quotation }) {
                     .filter((l) => l.group === group)
                     .map((l, i) => (
                       <tr key={l.id} className="border-t border-slate-100 [&>td]:px-2 [&>td]:py-1.5">
-                        <td className="text-slate-400">{i + 1}</td>
+                        <td className="text-slate-500">{i + 1}</td>
                         <td>
                           <Input value={l.particulars} aria-label="Particulars" placeholder="Charge name" disabled={locked} onChange={(e) => setLine(l.id, { particulars: e.target.value })} />
                         </td>
@@ -283,7 +283,7 @@ function QuotationEditor({ q }: { q: Quotation }) {
 
         <Card title="Notes / Terms & Conditions">
           <Textarea rows={3} value={draft.terms} disabled={locked} onChange={(e) => setDraft({ ...draft, terms: e.target.value })} />
-          <p className="mt-2 text-xs text-slate-400">GST auto-picks the configured default ({state.settings.gstPercent}%). Net Amount = (Rate + Mark Up) × Qty × ROE.</p>
+          <p className="mt-2 text-xs text-slate-500">GST auto-picks the configured default ({state.settings.gstPercent}%). Net Amount = (Rate + Mark Up) × Qty × ROE.</p>
         </Card>
 
         <div className="flex flex-wrap items-center justify-end gap-2">

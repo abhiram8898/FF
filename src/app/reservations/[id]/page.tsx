@@ -224,12 +224,12 @@ export default function ReservationPage() {
               <li key={label} className="flex min-w-[7rem] flex-1 flex-col items-center text-center">
                 <div className="flex w-full items-center">
                   <div className={cn("h-0.5 flex-1", i === 0 ? "invisible" : done || current ? "bg-brand-500" : "bg-slate-200")} />
-                  <div className={cn("grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold", done && "bg-brand-600 text-white", current && "bg-white text-brand-700 ring-2 ring-brand-500", !done && !current && "bg-slate-100 text-slate-400")}>
+                  <div className={cn("grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold", done && "bg-brand-600 text-white", current && "bg-white text-brand-700 ring-2 ring-brand-500", !done && !current && "bg-slate-100 text-slate-600")}>
                     {done ? <Check size={14} /> : i + 1}
                   </div>
                   <div className={cn("h-0.5 flex-1", i === FLOW.length - 1 ? "invisible" : done ? "bg-brand-500" : "bg-slate-200")} />
                 </div>
-                <span className={cn("mt-1.5 px-1 text-xs leading-tight", current ? "font-semibold text-brand-700" : done ? "text-slate-700" : "text-slate-400")}>{label}</span>
+                <span className={cn("mt-1.5 px-1 text-xs leading-tight", current ? "font-semibold text-brand-700" : done ? "text-slate-700" : "text-slate-500")}>{label}</span>
               </li>
             );
           })}
@@ -339,7 +339,7 @@ export default function ReservationPage() {
                 {r.previousDates.map((p, i) => (
                   <li key={i}>
                     <b>{fmtDate(p.date)}</b> · {p.reason}
-                    <div className="text-slate-400">changed {fmtDateTime(p.at)}</div>
+                    <div className="text-slate-500">changed {fmtDateTime(p.at)}</div>
                   </li>
                 ))}
               </ul>
@@ -351,7 +351,7 @@ export default function ReservationPage() {
                 <li key={i}>
                   <div className="font-medium text-slate-800">{h.action}</div>
                   {h.detail && <div className="text-slate-600">{h.detail}</div>}
-                  <div className="text-slate-400">
+                  <div className="text-slate-500">
                     {h.by} · {fmtDateTime(h.at)}
                   </div>
                 </li>

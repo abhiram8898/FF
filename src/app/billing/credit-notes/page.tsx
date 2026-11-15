@@ -45,7 +45,6 @@ export default function CreditNotesPage() {
           <Table>
             <thead>
               <tr>
-                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Job Number</th>
                 <th>AWB Number</th>
                 <th>CN - Inv. Number</th>
@@ -55,6 +54,7 @@ export default function CreditNotesPage() {
                 <th className="text-right">Inv. Amount</th>
                 <th className="text-right">Received</th>
                 <th>Status</th>
+                <th className="w-px whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -63,15 +63,6 @@ export default function CreditNotesPage() {
                 const source = state.bills.find((x) => x.id === b.sourceId);
                 return (
                   <tr key={b.id} className="hover:bg-slate-50">
-                    <td className="whitespace-nowrap">
-                      <RowActions
-                        label={`Actions for ${b.no}`}
-                        items={[
-                          { label: "View", onSelect: () => setView(b) },
-                          { label: "Edit", href: `/billing/${b.id}` },
-                        ]}
-                      />
-                    </td>
                     <td className="whitespace-nowrap">
                       {j ? (
                         <Link href={`/shipments/${j.id}`} className={`${linkCls} font-mono text-xs`}>
@@ -86,7 +77,7 @@ export default function CreditNotesPage() {
                       <Link href={`/billing/${b.id}`} className={`${linkCls} font-mono text-xs`}>
                         {b.no}
                       </Link>
-                      {source && <div className="text-xs text-slate-400">for {source.no}</div>}
+                      {source && <div className="text-xs text-slate-500">for {source.no}</div>}
                     </td>
                     <td className="whitespace-nowrap text-slate-600">{fmtDate(b.date)}</td>
                     <td className="max-w-44 truncate">{customer(b.customerId)?.name}</td>
@@ -95,6 +86,15 @@ export default function CreditNotesPage() {
                     <td className="text-right tabular-nums">{source ? f2(billTotals(source).received) : "0.00"}</td>
                     <td>
                       <Badge className={BILL_TONE[b.status]}>{b.status}</Badge>
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <RowActions
+                        label={`Actions for ${b.no}`}
+                        items={[
+                          { label: "View", onSelect: () => setView(b) },
+                          { label: "Edit", href: `/billing/${b.id}` },
+                        ]}
+                      />
                     </td>
                   </tr>
                 );

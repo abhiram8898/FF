@@ -27,7 +27,7 @@ export default function LoginPage() {
             <LoginForm />
           </Suspense>
         </div>
-        <p className="relative mt-8 text-center text-xs text-slate-400">© {new Date().getFullYear()} FreightTask · Every freight task. One platform.</p>
+        <p className="relative mt-8 text-center text-xs text-slate-500">© {new Date().getFullYear()} FreightTask · Every freight task. One platform.</p>
       </main>
     </div>
   );
@@ -203,9 +203,10 @@ function LoginForm() {
             </span>
           </label>
 
-          <label className="block">
-            <span className="mb-1.5 flex items-center justify-between text-sm font-medium text-slate-700">
-              Password
+          {/* Not a <label> wrapper: it holds buttons, and a label points at the first control inside it */}
+          <div>
+            <div className="mb-1.5 flex items-center justify-between text-sm font-medium text-slate-700">
+              <label htmlFor="login-password">Password</label>
               <button
                 type="button"
                 onClick={() => setNotice("Password resets aren't available in the demo. Use the demo account below.")}
@@ -213,10 +214,11 @@ function LoginForm() {
               >
                 Forgot password?
               </button>
-            </span>
+            </div>
             <span className="relative block">
               <Lock size={17} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-slate-400" aria-hidden />
               <input
+                id="login-password"
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
                 placeholder="Enter your password"
@@ -237,7 +239,7 @@ function LoginForm() {
                 {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
               </button>
             </span>
-          </label>
+          </div>
 
           {error && (
             <p key={errorKey} role="alert" className="login-shake flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">

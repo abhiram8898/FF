@@ -80,7 +80,6 @@ export default function RateRequestsPage() {
           <Table>
             <thead>
               <tr>
-                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Enquiry ID</th>
                 <th>Customer</th>
                 <th>Route</th>
@@ -88,14 +87,12 @@ export default function RateRequestsPage() {
                 <th>Requested</th>
                 <th>Reminders</th>
                 <th>Reply</th>
+                <th className="w-px whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.map(({ e, r }) => (
                 <tr key={`${e.id}-${r.airlineId}`} className="hover:bg-slate-50">
-                  <td className="whitespace-nowrap">
-                    <RowActions label={`Actions for ${e.ref}`} items={[{ label: "View enquiry", href: `/enquiries/${e.id}` }]} />
-                  </td>
                   <td className="whitespace-nowrap">
                     <Link href={`/enquiries/${e.id}`} className={linkCls}>
                       {e.ref}
@@ -114,6 +111,9 @@ export default function RateRequestsPage() {
                     ) : (
                       <Badge className="bg-amber-50 text-amber-800 ring-amber-200">Awaiting reply</Badge>
                     )}
+                  </td>
+                  <td className="whitespace-nowrap">
+                    <RowActions label={`Actions for ${e.ref}`} items={[{ label: "View enquiry", href: `/enquiries/${e.id}` }]} />
                   </td>
                 </tr>
               ))}

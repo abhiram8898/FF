@@ -44,7 +44,9 @@ export default function AgencyChargesPage() {
               <th>Unit</th>
               <th>Default rate (INR)</th>
               <th>Remarks</th>
-              <th />
+              <th>
+                <span className="sr-only">Remove</span>
+              </th>
             </tr>
           </thead>
           <tbody>

@@ -76,7 +76,6 @@ export default function AwbsPage() {
           <Table>
             <thead>
               <tr>
-                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Job Number</th>
                 <th>AWB Number</th>
                 <th>Shipper</th>
@@ -85,6 +84,7 @@ export default function AwbsPage() {
                 <th>Flight Number</th>
                 <th>Flight Date</th>
                 <th>Status</th>
+                <th className="w-px whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -92,18 +92,6 @@ export default function AwbsPage() {
                 const j = job(a.jobId);
                 return (
                   <tr key={a.id} className="hover:bg-slate-50">
-                    <td className="whitespace-nowrap">
-                      <RowActions
-                        label={`Actions for ${awbLabel(a)}`}
-                        items={[
-                          { label: "View", onSelect: () => setView(a) },
-                          ...(j ? [{ label: "Edit", onSelect: () => setEditing(a) }] : []),
-                          { label: "Status Change", onSelect: () => setStatusFor(a) },
-                          // An executed AWB is kept; it can only be cancelled
-                          ...(a.status === "AWB Executed" ? [] : [{ label: "Delete", onSelect: () => window.confirm(`Delete ${awbLabel(a)}? Cancel keeps the record instead.`) && actions.deleteAwb(a.id) }]),
-                        ]}
-                      />
-                    </td>
                     <td className="whitespace-nowrap">
                       {j ? (
                         <Link href={`/shipments/${j.id}`} className={`${linkCls} font-mono text-xs`}>
@@ -117,7 +105,7 @@ export default function AwbsPage() {
                       <button className={linkCls} onClick={() => setView(a)}>
                         {awbLabel(a)}
                       </button>
-                      {a.type === "House" && <div className="text-slate-400">MAWB {a.mawbNo || "—"}</div>}
+                      {a.type === "House" && <div className="text-slate-500">MAWB {a.mawbNo || "—"}</div>}
                     </td>
                     <td className="max-w-44 truncate" title={a.shipper}>
                       {a.shipper.split("\n")[0]}
@@ -130,6 +118,18 @@ export default function AwbsPage() {
                     <td className="whitespace-nowrap">{fmtDate(a.legs[0]?.flightDate)}</td>
                     <td className="whitespace-nowrap">
                       <ToneBadge status={a.status} tones={AWB_TONE} />
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <RowActions
+                        label={`Actions for ${awbLabel(a)}`}
+                        items={[
+                          { label: "View", onSelect: () => setView(a) },
+                          ...(j ? [{ label: "Edit", onSelect: () => setEditing(a) }] : []),
+                          { label: "Status Change", onSelect: () => setStatusFor(a) },
+                          // An executed AWB is kept; it can only be cancelled
+                          ...(a.status === "AWB Executed" ? [] : [{ label: "Delete", onSelect: () => window.confirm(`Delete ${awbLabel(a)}? Cancel keeps the record instead.`) && actions.deleteAwb(a.id) }]),
+                        ]}
+                      />
                     </td>
                   </tr>
                 );

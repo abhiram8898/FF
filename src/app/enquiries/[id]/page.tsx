@@ -255,7 +255,7 @@ function EnquiryWorkspace({ enq, initialDialog }: { enq: Enquiry; initialDialog:
                       <div className="truncate text-xs text-slate-500" title={a.detail}>
                         {a.detail}
                       </div>
-                      <div className="text-xs text-slate-400">{fmtDateTime(a.at)}</div>
+                      <div className="text-xs text-slate-500">{fmtDateTime(a.at)}</div>
                     </div>
                   </li>
                 ))}
@@ -386,7 +386,9 @@ function NextAction({ enq, openDialog }: { enq: Enquiry; openDialog: (d: Dialog)
                 <th className="text-right">Air freight / kg</th>
                 <th className="text-right">AWB fees</th>
                 <th className="text-right">Estimated total</th>
-                <th />
+                <th>
+                  <span className="sr-only">Action</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -505,7 +507,7 @@ function NextAction({ enq, openDialog }: { enq: Enquiry; openDialog: (d: Dialog)
   }
 
   return (
-    <Card title={<span id="next-action">Next action</span>} className="scroll-mt-20 border-brand-200 ring-1 ring-brand-100">
+    <Card title={<span id="next-action">Next action</span>} className="scroll-mt-3 border-brand-200 ring-1 ring-brand-100">
       {j && !JOB_STAGE_STATUSES.includes(enq.status) && enq.status !== "Booking Confirmed" && (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">
           <span>

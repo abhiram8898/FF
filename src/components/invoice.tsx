@@ -527,7 +527,9 @@ export function InvoiceForm({ initial, existing, onSubmit }: { initial: InvoiceI
                 <th className="w-32">Qty (net kg)</th>
                 <th className="w-28">Rate / kg</th>
                 <th className="w-32 text-right">Amount ({f.currency})</th>
-                <th className="w-10" />
+                <th className="w-10">
+                  <span className="sr-only">Remove</span>
+                </th>
               </tr>
             </thead>
             <tbody>

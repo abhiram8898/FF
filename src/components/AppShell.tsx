@@ -137,6 +137,13 @@ function Shell({ user, children }: { user: User; children: React.ReactNode }) {
   // Close the mobile menu after navigating
   useEffect(() => setMenuOpen(false), [pathname]);
 
+  // The content area is the scroll container (the window never scrolls): start each page at the top,
+  // unless the address points at a section (#next-action), which the page scrolls to itself
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!window.location.hash) scrollRef.current?.scrollTo({ top: 0 });
+  }, [pathname]);
+
   // The left-hand menu, as laid out in the FRD (LHM)
   const groups: NavGroup[] = [
     {
@@ -273,6 +280,7 @@ function Shell({ user, children }: { user: User; children: React.ReactNode }) {
                 <li key={href}>
                   <Link
                     href={href}
+                    prefetch
                     aria-current={isActive(href) ? "page" : undefined}
                     className={cn(
                       "relative flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[0.875rem] transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white",
@@ -299,24 +307,15 @@ function Shell({ user, children }: { user: User; children: React.ReactNode }) {
           </div>
         ))}
       </nav>
-      <button
-        onClick={() =>
-          window.confirm(
-            "Reset all data back to the demo data? Your changes will be lost.",
-          ) && actions.reset()
-        }
-        className="m-2.5 flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-brand-200 hover:bg-white/10 hover:text-white"
-      >
-        <RotateCcw size={14} aria-hidden /> Reset demo data
-      </button>
     </>
   );
 
   const iconBtn =
-    "relative rounded-md p-2 text-brand-100 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white";
+    "relative rounded-md p-1.5 text-brand-100 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white";
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    // Fills the screen exactly; only the content area under the header scrolls (see .app-scroll)
+    <div className="app-root flex h-dvh overflow-hidden bg-slate-50">
       <a
         href="#main"
         className="sr-only z-50 rounded-md bg-white px-3 py-2 text-sm font-medium text-brand-800 shadow focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
@@ -325,9 +324,10 @@ function Shell({ user, children }: { user: User; children: React.ReactNode }) {
       </a>
 
       {/* Desktop sidebar: full height, logo on white above the navigation */}
-      <aside className="brand-scope no-print sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-white/10 bg-navy-900 xl:flex">
+      <aside className="brand-scope no-print hidden h-full w-60 shrink-0 flex-col border-r border-white/10 bg-navy-900 xl:flex">
         <Link
           href="/"
+          prefetch
           className="flex h-14 shrink-0 items-center border-b border-white/10 px-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-white"
           aria-label="FreightTask home"
         >
@@ -381,6 +381,7 @@ function Shell({ user, children }: { user: User; children: React.ReactNode }) {
                   <li key={t.href}>
                     <Link
                       href={t.href}
+                      prefetch
                       aria-current={isTabActive(t) ? "page" : undefined}
                       className={cn(
                         "relative block rounded-md px-3 py-1.5 text-[0.875rem]",
@@ -402,9 +403,10 @@ function Shell({ user, children }: { user: User; children: React.ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="brand-scope no-print sticky top-0 z-30 flex h-14 items-stretch gap-2 bg-navy-900 pr-2 pl-3 shadow-sm sm:pr-3 xl:pl-0">
+        <header className="brand-scope no-print relative z-30 flex h-14 shrink-0 items-stretch gap-2 bg-navy-900 pr-2 pl-3 shadow-sm sm:pr-3 xl:pl-0">
           <Link
             href="/"
+            prefetch
             className="flex shrink-0 items-center rounded-sm focus-visible:outline-2 focus-visible:outline-white xl:hidden"
             aria-label="FreightTask home"
           >
@@ -424,6 +426,7 @@ function Shell({ user, children }: { user: User; children: React.ReactNode }) {
                 <li key={t.href} className="flex">
                   <Link
                     href={t.href}
+                    prefetch
                     aria-current={isTabActive(t) ? "page" : undefined}
                     className={cn(
                       "relative flex items-center px-3 text-[0.875rem] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-white",
@@ -444,6 +447,7 @@ function Shell({ user, children }: { user: User; children: React.ReactNode }) {
           <div className="flex shrink-0 items-center gap-1">
             <Link
               href="/notifications"
+              prefetch
               className={iconBtn}
               aria-label="Client Notifications"
             >
@@ -461,21 +465,26 @@ function Shell({ user, children }: { user: User; children: React.ReactNode }) {
           </div>
         </header>
 
-        <main
-          id="main"
-          className={cn(
-            "mx-auto w-full max-w-7xl min-w-0 flex-1 px-3 pt-3 sm:px-4 xl:pb-4 2xl:max-w-[110rem] 2xl:px-6",
-            showFab ? "pb-24" : "pb-6",
-          )}
-        >
-          <PageTransition>{children}</PageTransition>
-        </main>
+        {/* The one scroll area: everything between the header and the (future) footer */}
+        <div ref={scrollRef} className="app-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <main
+            id="main"
+            tabIndex={-1}
+            className={cn(
+              "mx-auto w-full max-w-7xl min-w-0 px-3 pt-3 outline-none sm:px-4 xl:pb-4 2xl:max-w-[110rem] 2xl:px-6",
+              showFab ? "pb-24" : "pb-6",
+            )}
+          >
+            <PageTransition>{children}</PageTransition>
+          </main>
+        </div>
       </div>
 
       {/* Phone and tablet shortcut to the most common action, on list pages only so it never covers a form */}
       {showFab && (
         <Link
           href={NEW_ENQUIRY}
+          prefetch
           aria-label="New Enquiry"
           className="no-print fixed right-5 bottom-5 z-20 grid size-14 place-items-center rounded-full bg-navy-900 text-white shadow-lg ring-4 ring-white hover:bg-navy-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 xl:hidden"
         >
@@ -499,8 +508,8 @@ function Avatar({ initials, size }: { initials: string; size: "sm" | "lg" }) {
       className={cn(
         "grid shrink-0 place-items-center rounded-full bg-linear-to-br from-brand-500 via-brand-600 to-navy-700 font-semibold text-white ring-2",
         size === "sm"
-          ? "size-8 text-xs ring-white/80"
-          : "size-11 text-sm ring-white shadow-md shadow-brand-900/20",
+          ? "size-6 text-xs ring-white/80"
+          : "size-10 text-sm ring-white shadow-md shadow-brand-900/20",
       )}
       aria-hidden
     >
@@ -560,14 +569,14 @@ function UserMenu({ user }: { user: User }) {
         aria-haspopup="menu"
         aria-expanded={open}
         className={cn(
-          "flex items-center gap-2.5 rounded-xl py-1 pr-2 pl-1 text-left transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white",
+          "flex items-center gap-2 rounded-xl py-1 pr-2 pl-1 text-left transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white",
           open && "bg-white/10",
         )}
       >
         <Avatar initials={user.initials} size="sm" />
-       
+
         <ChevronDown
-          size={15}
+          size={18}
           className={cn(
             "hidden text-brand-200 transition-transform duration-200 sm:block",
             open && "rotate-180",
@@ -600,6 +609,7 @@ function UserMenu({ user }: { user: User }) {
           <div className="border-t border-slate-100 p-1.5">
             <Link
               href="/settings"
+              prefetch
               role="menuitem"
               aria-current={pathname === "/settings" ? "page" : undefined}
               className={cn(

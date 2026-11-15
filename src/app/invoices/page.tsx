@@ -81,7 +81,6 @@ export default function InvoicesPage() {
           <Table>
             <thead>
               <tr>
-                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Job Number</th>
                 <th>Invoice Number</th>
                 <th>Customer Name</th>
@@ -91,6 +90,7 @@ export default function InvoicesPage() {
                 <th>Date</th>
                 <th className="text-right">Amount</th>
                 <th>Status</th>
+                <th className="w-px whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -98,17 +98,6 @@ export default function InvoicesPage() {
                 const j = job(i.jobId);
                 return (
                   <tr key={i.id} className={i.status === "Cancelled" ? "bg-slate-50 text-slate-500" : "hover:bg-slate-50"}>
-                    <td className="whitespace-nowrap">
-                      <RowActions
-                        label={`Actions for ${i.no}`}
-                        items={[
-                          { label: "View", onSelect: () => setView(i) },
-                          { label: "Edit", href: `/invoices/${i.id}` },
-                          ...(i.status !== "Cancelled" ? [{ label: "Cancel", onSelect: () => window.confirm(`Cancel invoice ${i.no}?`) && actions.setInvoiceStatus(i.id, "Cancelled") }] : []),
-                          { label: "Duplicate", onSelect: () => router.push(`/invoices/${actions.duplicateInvoice(i.id).id}`) },
-                        ]}
-                      />
-                    </td>
                     <td className="whitespace-nowrap">
                       {j ? (
                         <Link href={`/shipments/${j.id}`} className={`${linkCls} font-mono text-xs`}>
@@ -133,6 +122,17 @@ export default function InvoicesPage() {
                     </td>
                     <td className="whitespace-nowrap">
                       <ToneBadge status={i.status} tones={INVOICE_TONE} />
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <RowActions
+                        label={`Actions for ${i.no}`}
+                        items={[
+                          { label: "View", onSelect: () => setView(i) },
+                          { label: "Edit", href: `/invoices/${i.id}` },
+                          ...(i.status !== "Cancelled" ? [{ label: "Cancel", onSelect: () => window.confirm(`Cancel invoice ${i.no}?`) && actions.setInvoiceStatus(i.id, "Cancelled") }] : []),
+                          { label: "Duplicate", onSelect: () => router.push(`/invoices/${actions.duplicateInvoice(i.id).id}`) },
+                        ]}
+                      />
                     </td>
                   </tr>
                 );

@@ -99,7 +99,6 @@ function Billing() {
             <thead>
               {isProforma ? (
                 <tr>
-                  <th className="w-px whitespace-nowrap">Actions</th>
                   <th>Job Number</th>
                   <th>Invoice Number</th>
                   <th>Date</th>
@@ -108,10 +107,10 @@ function Billing() {
                   <th>POD</th>
                   <th className="text-right">Amount</th>
                   <th>Status</th>
+                  <th className="w-px whitespace-nowrap">Actions</th>
                 </tr>
               ) : (
                 <tr>
-                  <th className="w-px whitespace-nowrap">Actions</th>
                   <th>Job Number</th>
                   <th>AWB Number</th>
                   <th>Invoice Number</th>
@@ -122,6 +121,7 @@ function Billing() {
                   <th className="text-right">Received</th>
                   <th>Laps</th>
                   <th>Status</th>
+                  <th className="w-px whitespace-nowrap">Actions</th>
                 </tr>
               )}
             </thead>
@@ -155,18 +155,6 @@ function Billing() {
                 );
                 return isProforma ? (
                   <tr key={b.id} className="hover:bg-slate-50">
-                    <td className="whitespace-nowrap">
-                      <RowActions
-                        label={`Actions for ${b.no}`}
-                        items={[
-                          { label: "View", onSelect: () => setView(b) },
-                          { label: "Edit", href: `/billing/${b.id}` },
-                          ...(b.status === "Draft" || b.status === "Proforma INV Send"
-                            ? [{ label: "Cancel", onSelect: () => window.confirm(`Cancel proforma ${b.no}?`) && actions.cancelBill(b.id) }]
-                            : []),
-                        ]}
-                      />
-                    </td>
                     {jobCell}
                     {noCell}
                     <td className="whitespace-nowrap text-slate-600">{fmtDate(b.date)}</td>
@@ -179,19 +167,21 @@ function Billing() {
                     </td>
                     <td className="text-right tabular-nums">{f2(t.total)}</td>
                     {statusCell}
-                  </tr>
-                ) : (
-                  <tr key={b.id} className="hover:bg-slate-50">
                     <td className="whitespace-nowrap">
                       <RowActions
                         label={`Actions for ${b.no}`}
                         items={[
                           { label: "View", onSelect: () => setView(b) },
                           { label: "Edit", href: `/billing/${b.id}` },
-                          ...(b.status !== "Cancelled" ? [{ label: "Change status", onSelect: () => setStatusFor(b) }] : []),
+                          ...(b.status === "Draft" || b.status === "Proforma INV Send"
+                            ? [{ label: "Cancel", onSelect: () => window.confirm(`Cancel proforma ${b.no}?`) && actions.cancelBill(b.id) }]
+                            : []),
                         ]}
                       />
                     </td>
+                  </tr>
+                ) : (
+                  <tr key={b.id} className="hover:bg-slate-50">
                     {jobCell}
                     <td className="font-mono text-xs whitespace-nowrap">{b.mawbNo || awbOf(b.jobId)?.mawbNo || "—"}</td>
                     {noCell}
@@ -202,6 +192,16 @@ function Billing() {
                     <td className="text-right tabular-nums">{f2(t.received)}</td>
                     <td className="whitespace-nowrap text-slate-600">{b.status === "Paid" || b.status === "Cancelled" ? "—" : laps(b.createdAt)}</td>
                     {statusCell}
+                    <td className="whitespace-nowrap">
+                      <RowActions
+                        label={`Actions for ${b.no}`}
+                        items={[
+                          { label: "View", onSelect: () => setView(b) },
+                          { label: "Edit", href: `/billing/${b.id}` },
+                          ...(b.status !== "Cancelled" ? [{ label: "Change status", onSelect: () => setStatusFor(b) }] : []),
+                        ]}
+                      />
+                    </td>
                   </tr>
                 );
               })}

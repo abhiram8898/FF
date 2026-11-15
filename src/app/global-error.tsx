@@ -46,7 +46,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
             }
           >
             An unexpected error stopped the app from loading. Try again first. If it keeps happening, the data saved in this browser may be damaged, and resetting the demo data will fix it.
-            {error.digest && <span className="mt-2 block font-mono text-xs text-slate-400">Reference: {error.digest}</span>}
+            {error.digest && <span className="mt-2 block font-mono text-xs text-slate-500">Reference: {error.digest}</span>}
           </StatusPage>
         </main>
       </body>

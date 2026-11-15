@@ -151,28 +151,16 @@ export default function DashboardPage() {
             <Table>
               <thead>
                 <tr>
-                  <th className="w-px whitespace-nowrap">Actions</th>
                   <th>Enquiry / Job</th>
                   <th>Customer</th>
                   <th>Route</th>
                   <th>Status</th>
+                  <th className="w-px whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((e) => (
                   <tr key={e.key} className="hover:bg-slate-50">
-                    <td className="whitespace-nowrap">
-                      <RowActions
-                        label={`Actions for ${e.ref}`}
-                        items={[
-                          // The row's own record (enquiry, or a job that came from a reservation) is the eye
-                          { label: e.href.startsWith("/enquiries/") ? "View enquiry" : "View job", href: e.href, icon: Eye, tone: "view" },
-                          ...(e.jobId && e.href !== `/shipments/${e.jobId}` ? [{ label: "Open its job", href: `/shipments/${e.jobId}` }] : []),
-                          ...(openStage?.key === "docs" && e.jobId ? [{ label: "Manage documents", href: `/documents?job=${e.jobId}` }] : []),
-                          ...(e.editHref ? [{ label: "Edit enquiry", href: e.editHref }] : []),
-                        ]}
-                      />
-                    </td>
                     <td className="whitespace-nowrap">
                       <Link href={e.href} className={linkCls}>
                         {e.ref}
@@ -186,9 +174,21 @@ export default function DashboardPage() {
                     </td>
                     <td className="whitespace-nowrap">
                       <StatusBadge status={e.status} />
-                      <div className="mt-0.5 text-xs text-slate-400">
+                      <div className="mt-0.5 text-xs text-slate-500">
                         {laps(e.statusAt)}
                       </div>
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <RowActions
+                        label={`Actions for ${e.ref}`}
+                        items={[
+                          // The row's own record (enquiry, or a job that came from a reservation) is the eye
+                          { label: e.href.startsWith("/enquiries/") ? "View enquiry" : "View job", href: e.href, icon: Eye, tone: "view" },
+                          ...(e.jobId && e.href !== `/shipments/${e.jobId}` ? [{ label: "Open its job", href: `/shipments/${e.jobId}` }] : []),
+                          ...(openStage?.key === "docs" && e.jobId ? [{ label: "Manage documents", href: `/documents?job=${e.jobId}` }] : []),
+                          ...(e.editHref ? [{ label: "Edit enquiry", href: e.editHref }] : []),
+                        ]}
+                      />
                     </td>
                   </tr>
                 ))}

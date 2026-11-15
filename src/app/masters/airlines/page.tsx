@@ -63,27 +63,17 @@ export default function AirlinesPage() {
           <Table>
             <thead>
               <tr>
-                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Airline Name</th>
                 <th>Code</th>
                 <th>AWB Prefix</th>
                 <th>Rate Request Email</th>
                 <th>Airports Served</th>
+                <th className="w-px whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((a) => (
                 <tr key={a.id} className="hover:bg-slate-50">
-                  <td className="whitespace-nowrap">
-                    <RowActions
-                      label={`Actions for ${a.name}`}
-                      items={[
-                        { label: "Edit", onSelect: () => setEditing(a) },
-                        ...(a.portalUrl ? [{ label: "Open booking portal", onSelect: () => window.open(a.portalUrl, "_blank", "noopener,noreferrer") }] : []),
-                        { label: "Email rate desk", href: `mailto:${a.email}` },
-                      ]}
-                    />
-                  </td>
                   <td className="whitespace-nowrap">
                     <div className="font-medium">{a.name}</div>
                     {(a.contactPerson || a.mobile) && <div className="text-xs text-slate-500">{[a.contactPerson, a.mobile].filter(Boolean).join(" · ")}</div>}
@@ -97,6 +87,16 @@ export default function AirlinesPage() {
                         <Badge key={p}>{p}</Badge>
                       ))}
                     </div>
+                  </td>
+                  <td className="whitespace-nowrap">
+                    <RowActions
+                      label={`Actions for ${a.name}`}
+                      items={[
+                        { label: "Edit", onSelect: () => setEditing(a) },
+                        ...(a.portalUrl ? [{ label: "Open booking portal", onSelect: () => window.open(a.portalUrl, "_blank", "noopener,noreferrer") }] : []),
+                        { label: "Email rate desk", href: `mailto:${a.email}` },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

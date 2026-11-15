@@ -8,7 +8,7 @@ import type { EmailKind, EmailLog } from "@/lib/types";
 import { DATE_RANGES, type DateRange, fmtDateTime, inRange, matches } from "@/lib/utils";
 import { Badge, Card, FilterBar, FilterSelect, type KpiDef, KpiFilters, kpiTest, Modal, NoResults, PageHeader, ResetFilters, RowActions, SearchField, Table, linkCls } from "@/components/ui";
 import { DocList } from "@/components/inputs";
-import { MailBody } from "@/components/richtext";
+import { MailBody } from "@/components/mailbody";
 
 const KINDS: EmailKind[] = ["Rate Request", "Rate Reminder", "Quotation", "Quotation Reminder", "General"];
 
@@ -67,12 +67,12 @@ export default function EmailLogsPage() {
           <Table>
             <thead>
               <tr>
-                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Sent</th>
                 <th>Type</th>
                 <th>To</th>
                 <th>Subject</th>
                 <th>Enquiry ID</th>
+                <th className="w-px whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -80,12 +80,6 @@ export default function EmailLogsPage() {
                 const e = enquiry(l.enquiryId);
                 return (
                   <tr key={l.id} className="hover:bg-slate-50">
-                    <td className="whitespace-nowrap">
-                      <RowActions
-                        label={`Actions for ${l.subject}`}
-                        items={[{ label: "Read email", onSelect: () => setOpen(l) }, ...(e ? [{ label: "View enquiry", href: `/enquiries/${e.id}` }] : [])]}
-                      />
-                    </td>
                     <td className="whitespace-nowrap text-slate-600">{fmtDateTime(l.at)}</td>
                     <td className="whitespace-nowrap">
                       <Badge>{l.kind}</Badge>
@@ -106,6 +100,12 @@ export default function EmailLogsPage() {
                       ) : (
                         "—"
                       )}
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <RowActions
+                        label={`Actions for ${l.subject}`}
+                        items={[{ label: "Read email", onSelect: () => setOpen(l) }, ...(e ? [{ label: "View enquiry", href: `/enquiries/${e.id}` }] : [])]}
+                      />
                     </td>
                   </tr>
                 );

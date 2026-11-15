@@ -10,9 +10,9 @@ export function JobsTabs() {
     <LinkTabs
       label="Jobs"
       tabs={[
-        { href: "/enquiries", label: "Tab 1 · Enquiries", count: state.enquiries.length },
-        { href: "/quotations", label: "Tab 2 · Quotations", count: state.quotations.length },
-        { href: "/shipments", label: "Tab 3 · Job/Booking", count: state.jobs.length },
+        { href: "/enquiries", label: "Enquiries", count: state.enquiries.length },
+        { href: "/quotations", label: "Quotations", count: state.quotations.length },
+        { href: "/shipments", label: "Job/Booking", count: state.jobs.length },
       ]}
     />
   );

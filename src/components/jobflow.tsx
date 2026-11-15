@@ -88,13 +88,34 @@ const latin = (s: string) =>
     .replace(/[“”]/g, '"')
     .replace(/[^\x20-\x7E\xA0-\xFF\n]/g, "?");
 
-/** One merged PDF: uploaded PDFs and images, plus summary pages for documents made in the application */
+/** Any image the browser can display (GIF, WebP, BMP, SVG…) re-drawn as PNG, so pdf-lib can embed it */
+async function imageToPng(dataUrl: string): Promise<ArrayBuffer | null> {
+  try {
+    const img = new Image();
+    img.src = dataUrl;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth || 1200;
+    canvas.height = img.naturalHeight || 1200;
+    canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/png"));
+    return blob ? await blob.arrayBuffer() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One merged PDF. PDFs are added page by page and images as pages; any other format (Word, Excel,
+ * text…) is embedded in the PDF as an attachment, listed on a summary page, so every file reaches the CHA.
+ */
 async function mergeToPdf(items: MergeItem[], heading: string) {
   const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
   const out = await PDFDocument.create();
   const font = await out.embedFont(StandardFonts.Helvetica);
   const bold = await out.embedFont(StandardFonts.HelveticaBold);
   const skipped: string[] = [];
+  const attached: string[] = [];
 
   const textPage = (title: string, rows: [string, string][]) => {
     const page = out.addPage([595, 842]);
@@ -159,21 +180,30 @@ async function mergeToPdf(items: MergeItem[], heading: string) {
       if (d.mime === "application/pdf" || d.fileName.toLowerCase().endsWith(".pdf")) {
         const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
         for (const p of await out.copyPages(src, src.getPageIndices())) out.addPage(p);
-      } else if (d.mime === "image/png" || d.mime === "image/jpeg") {
-        const img = d.mime === "image/png" ? await out.embedPng(bytes) : await out.embedJpg(bytes);
+      } else if (d.mime.startsWith("image/")) {
+        const png = d.mime === "image/png" || d.mime === "image/jpeg" ? null : await imageToPng(d.dataUrl);
+        if (d.mime !== "image/png" && d.mime !== "image/jpeg" && !png) throw new Error("unreadable image");
+        const img = d.mime === "image/jpeg" ? await out.embedJpg(bytes) : await out.embedPng(png ?? bytes);
         const page = out.addPage([595, 842]);
         const scale = Math.min(515 / img.width, 762 / img.height, 1);
         page.drawImage(img, { x: 40, y: 802 - img.height * scale, width: img.width * scale, height: img.height * scale });
       } else {
-        skipped.push(`${d.title} (${d.fileName}: only PDF, PNG and JPG can be merged)`);
+        // Word, Excel, text and other formats can't become pages in the browser: carry the original file inside the PDF
+        await out.attach(bytes, d.fileName, { mimeType: d.mime || "application/octet-stream", description: d.title, creationDate: new Date(d.uploadedAt), modificationDate: new Date(d.uploadedAt) });
+        attached.push(d.fileName);
       }
     } catch {
       skipped.push(`${d.title} (the file could not be read)`);
     }
   }
+  if (attached.length)
+    textPage("ATTACHED FILES", [
+      ["Files", attached.join("\n")],
+      ["How to open", "These files are attached inside this PDF.\nOpen the attachments panel (paperclip) in your PDF reader."],
+    ]);
   if (!out.getPageCount()) textPage("No pages", [["Note", "None of the selected documents could be merged."]]);
   const bytes = await out.save();
-  return { blob: new Blob([bytes as BlobPart], { type: "application/pdf" }), skipped };
+  return { blob: new Blob([bytes as BlobPart], { type: "application/pdf" }), skipped, attached };
 }
 
 /** "Merge Documents": pick the documents and their order; they become one PDF on the job */
@@ -189,7 +219,7 @@ export function MergeModal({ job, onClose, onDispatch }: { job: Job; onClose: ()
   ];
   const [order, setOrder] = useState<string[]>(() => (job.merged?.order.filter((k) => all.some((x) => x.key === k)) ?? all.map((x) => x.key)));
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ url: string; skipped: string[] } | null>(null);
+  const [result, setResult] = useState<{ url: string; skipped: string[]; attached: string[] } | null>(null);
   const chosen = order.map((k) => all.find((x) => x.key === k)!).filter(Boolean);
   const rest = all.filter((x) => !order.includes(x.key));
   const move = (key: string, by: -1 | 1) => {
@@ -207,11 +237,11 @@ export function MergeModal({ job, onClose, onDispatch }: { job: Job; onClose: ()
     setBusy(true);
     setError("");
     try {
-      const { blob, skipped } = await mergeToPdf(chosen, `${state.settings.company.name} · ${job.ref}`);
+      const { blob, skipped, attached } = await mergeToPdf(chosen, `${state.settings.company.name} · ${job.ref}`);
       const keep = blob.size <= MAX_KEPT_FILE * 1.5;
       const merged: MergedDocs = { at: new Date().toISOString(), order, fileName, size: blob.size, skipped, dataUrl: keep ? await readFileAsDataUrl(new File([blob], fileName)) : undefined };
       actions.saveMerge(job.id, merged);
-      setResult({ url: URL.createObjectURL(blob), skipped });
+      setResult({ url: URL.createObjectURL(blob), skipped, attached });
     } catch (e) {
       setError(`The documents could not be merged (${(e as Error).message || "unknown error"}). Untick the file that may be damaged and try again.`);
     } finally {
@@ -284,6 +314,11 @@ export function MergeModal({ job, onClose, onDispatch }: { job: Job; onClose: ()
           <p className="rounded-lg bg-emerald-50 p-3 text-emerald-800">
             Merged into <b>{fileName}</b>. Next action: <b>Dispatch To CHA</b>.
           </p>
+          {result.attached.length > 0 && (
+            <p className="rounded-lg bg-brand-50 p-3 text-brand-800">
+              Attached inside the PDF (open them from your PDF reader&apos;s attachments panel): <b>{result.attached.join(", ")}</b>.
+            </p>
+          )}
           {result.skipped.length > 0 && (
             <Fog>
               Not merged: {result.skipped.join("; ")}.

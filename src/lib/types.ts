@@ -355,7 +355,7 @@ export interface MergedDocs {
   /** Merged PDF as a data URL; left out when it is too large to keep */
   dataUrl?: string;
   size: number;
-  /** Files that could not be merged (not a PDF or image, or too large to keep) */
+  /** Files that could not be included (too large to keep, or unreadable); other formats are attached inside the PDF */
   skipped: string[];
 }
 
@@ -652,6 +652,8 @@ export interface Bill {
   jobId: string;
   customerId: string;
   branch: string;
+  /** Company bank account printed on this bill; the default account when not set */
+  bankId?: string;
   /** Header details, filled from the job and editable */
   to: string;
   exporter: string;
@@ -921,6 +923,12 @@ export interface BankDetails {
   bankPostalCode: string;
 }
 
+/** A company bank account (Company Set up → Bank Account). The default one prints on bills unless a bill picks another. */
+export interface BankAccount extends BankDetails {
+  id: string;
+  isDefault: boolean;
+}
+
 export interface Settings {
   company: {
     name: string;
@@ -944,7 +952,7 @@ export interface Settings {
     letterhead?: string;
     footer?: string;
   };
-  bank: BankDetails;
+  banks: BankAccount[];
   /** Company Code used in reference numbers */
   refPrefix: string;
   enquiryRef: RefPattern;

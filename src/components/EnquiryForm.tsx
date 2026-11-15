@@ -536,10 +536,10 @@ export function EnquiryForm({ existing, email }: { existing?: Enquiry; email?: I
                       </label>
                     ))
                   ) : (
-                    <span className="text-sm text-slate-400">No airline serves this route.</span>
+                    <span className="text-sm text-slate-500">No airline serves this route.</span>
                   )}
                 </div>
-                <span className="text-xs text-slate-400">Send Rate Request mails these airlines straight away (one mail per airline).</span>
+                <span className="text-xs text-slate-500">Send Rate Request mails these airlines straight away (one mail per airline).</span>
               </div>
               <Field label="Sales Person">
                 <Select value={f.salesPerson} onChange={(e) => set("salesPerson", e.target.value)}>

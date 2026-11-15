@@ -281,14 +281,13 @@ export default function BookingJobPage() {
         {rows.length ? (
           // Wide sheet: scrolls sideways with Date and Job No pinned on the left
           <div
-            className="relative overflow-x-auto [scrollbar-color:var(--color-slate-300)_transparent]"
+            className="relative overflow-x-auto"
             tabIndex={0}
             aria-label="Booking register, scrolls sideways"
           >
             <table className="w-max min-w-full text-left text-sm whitespace-nowrap">
               <thead>
                 <tr className="bg-navy-700 text-xs text-white [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold">
-                  <th className="w-px whitespace-nowrap">Actions</th>
                   <th className="sticky left-0 z-10 bg-navy-700">Date</th>
                   <th className="sticky left-[6.5rem] z-10 bg-navy-700 shadow-[2px_0_0_rgb(255_255_255/0.15)]">
                     Job No
@@ -305,6 +304,7 @@ export default function BookingJobPage() {
                       {c.head}
                     </th>
                   ))}
+                  <th className="w-px whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -319,25 +319,6 @@ export default function BookingJobPage() {
                         rowBg,
                       )}
                     >
-                      <td className="whitespace-nowrap">
-                        <RowActions
-                          label={`Actions for ${j.ref}`}
-                          items={[
-                            {
-                              label: "Open / Edit",
-                              href: `/shipments/${j.id}`,
-                            },
-                            {
-                              label: "Duplicate",
-                              onSelect: () => router.push(`/shipments/${actions.duplicateJob(j.id).id}`),
-                            },
-                            ...(j.status !== "Cancelled" ? [{ label: "Convert to Reservation", href: `/reservations/new?fromJob=${j.id}` }] : []),
-                            ...(j.enquiryId ? [{ label: "View enquiry", href: `/enquiries/${j.enquiryId}` }] : []),
-                            ...(j.quotationId ? [{ label: "View quotation", href: `/quotations/${j.quotationId}` }] : []),
-                            ...(j.reservationId ? [{ label: "View reservation", href: `/reservations/${j.reservationId}` }] : []),
-                          ]}
-                        />
-                      </td>
                       <td
                         className={cn(
                           "sticky left-0 z-[1] w-[6.5rem] text-slate-600",
@@ -364,6 +345,29 @@ export default function BookingJobPage() {
                           {c.cell(j)}
                         </td>
                       ))}
+                      <td className="whitespace-nowrap">
+                        <RowActions
+                          label={`Actions for ${j.ref}`}
+                          items={[
+                            {
+                              label: "Open / Edit",
+                              href: `/shipments/${j.id}`,
+                            },
+                            {
+                              label: "Duplicate",
+                              onSelect: () => router.push(`/shipments/${actions.duplicateJob(j.id).id}`),
+                            },
+                            ...(j.status !== "Cancelled" ? [{ label: "Convert to Reservation", href: `/reservations/new?fromJob=${j.id}` }] : []),
+                            ...(j.enquiryId ? [{ label: "View enquiry", href: `/enquiries/${j.enquiryId}` }] : []),
+                            ...(j.quotationId ? [{ label: "View quotation", href: `/quotations/${j.quotationId}` }] : []),
+                            ...(j.reservationId ? [{ label: "View reservation", href: `/reservations/${j.reservationId}` }] : []),
+                            {
+                              label: "Delete",
+                              onSelect: () => window.confirm(`Delete booking ${j.ref}? This can't be undone. Its enquiry goes back to Booking Confirmed.`) && actions.deleteJob(j.id),
+                            },
+                          ]}
+                        />
+                      </td>
                     </tr>
                   );
                 })}

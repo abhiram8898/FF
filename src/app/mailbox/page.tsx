@@ -31,7 +31,14 @@ import {
   Tabs,
 } from "@/components/ui";
 import { DocList } from "@/components/inputs";
-import { MailBody, RichTextEditor } from "@/components/richtext";
+import dynamic from "next/dynamic";
+import { MailBody } from "@/components/mailbody";
+
+// The rich-text editor (Tiptap/ProseMirror, ~145 KB) loads only when Compose is opened
+const RichTextEditor = dynamic(() => import("@/components/richtext").then((m) => m.RichTextEditor), {
+  ssr: false,
+  loading: () => <div className="h-72 animate-pulse rounded-lg border border-slate-200 bg-slate-50" aria-hidden />,
+});
 import { RateForm } from "@/components/workflow";
 
 const FOLDERS = ["Inbox", "Compose", "Drafts", "Sent"] as const;
@@ -320,9 +327,9 @@ function Mailbox() {
                   <button onClick={() => compose(d)} className={cn(listItem, "min-w-0 flex-1")}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-sm font-medium text-slate-800">{d.subject || "(no subject)"}</span>
-                      <span className="shrink-0 text-xs text-slate-400">Saved {fmtDateTime(d.savedAt)}</span>
+                      <span className="shrink-0 text-xs text-slate-600">Saved {fmtDateTime(d.savedAt)}</span>
                     </div>
-                    <div className="truncate text-xs text-slate-500">To: {d.to.join("; ") || "—"}</div>
+                    <div className="truncate text-xs text-slate-600">To: {d.to.join("; ") || "—"}</div>
                     {d.enquiryId && <Badge className="mt-1">{enquiry(d.enquiryId)?.ref}</Badge>}
                   </button>
                   <button onClick={() => actions.deleteDraft(d.id)} className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label={`Delete draft ${d.subject}`}>
@@ -353,9 +360,9 @@ function Mailbox() {
                   <button onClick={() => open(() => setSelectedId(m.id))} aria-current={m.id === selectedId ? "true" : undefined} className={cn(listItem, m.id === selectedId && "bg-brand-50")}>
                     <div className="flex items-center justify-between gap-2">
                       <span className={cn("truncate text-sm", m.read ? "text-slate-700" : "font-semibold text-slate-900")}>{m.fromName}</span>
-                      <span className="shrink-0 text-xs text-slate-400">{fmtDateTime(m.receivedAt)}</span>
+                      <span className="shrink-0 text-xs text-slate-600">{fmtDateTime(m.receivedAt)}</span>
                     </div>
-                    <div className={cn("truncate text-xs", m.read ? "text-slate-500" : "font-medium text-slate-700")}>{m.subject}</div>
+                    <div className={cn("truncate text-xs", m.read ? "text-slate-600" : "font-medium text-slate-700")}>{m.subject}</div>
                     <div className="mt-1 flex gap-1">
                       <Badge className={MAIL_TAG[m.from].className}>{MAIL_TAG[m.from].label}</Badge>
                       {m.enquiryId && <Badge className="bg-emerald-50 text-emerald-700 ring-emerald-200">Linked</Badge>}
@@ -390,7 +397,7 @@ function Mailbox() {
                 <div className="mb-3 text-sm">
                   <Badge className={cn("mr-2", MAIL_TAG[selected.from].className)}>{MAIL_TAG[selected.from].label}</Badge>
                   <span className="font-medium text-slate-800">{selected.fromName}</span> <span className="text-slate-500">&lt;{selected.fromEmail}&gt;</span>
-                  <div className="text-xs text-slate-400">{fmtDateTime(selected.receivedAt)}</div>
+                  <div className="text-xs text-slate-500">{fmtDateTime(selected.receivedAt)}</div>
                 </div>
                 <pre className="font-sans text-sm leading-relaxed break-words whitespace-pre-wrap text-slate-700">{selected.body}</pre>
                 {!linked && (
@@ -418,9 +425,9 @@ function Mailbox() {
                     <button onClick={() => open(() => setSentId(l.id))} aria-current={l.id === sentId ? "true" : undefined} className={cn(listItem, l.id === sentId && "bg-brand-50")}>
                       <div className="flex items-center justify-between gap-2">
                         <span className="truncate text-sm text-slate-700">To: {l.to.join("; ")}</span>
-                        <span className="shrink-0 text-xs text-slate-400">{fmtDateTime(l.at)}</span>
+                        <span className="shrink-0 text-xs text-slate-600">{fmtDateTime(l.at)}</span>
                       </div>
-                      <div className="truncate text-xs text-slate-500">{l.subject}</div>
+                      <div className="truncate text-xs text-slate-600">{l.subject}</div>
                       <Badge className="mt-1">{l.kind}</Badge>
                     </button>
                   </li>

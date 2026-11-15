@@ -42,12 +42,12 @@ export default function UserManagementPage() {
           <Table>
             <thead>
               <tr>
-                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Role Name</th>
                 <th>Description</th>
                 <th>Branches</th>
                 <th>Screens</th>
                 <th className="text-right">Users</th>
+                <th className="w-px whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -56,15 +56,6 @@ export default function UserManagementPage() {
                 const inUse = users.filter((u) => u.roleIds.includes(r.id)).length;
                 return (
                   <tr key={r.id} className="hover:bg-slate-50">
-                    <td className="whitespace-nowrap">
-                      <RowActions
-                        label={`Actions for ${r.name}`}
-                        items={[
-                          { label: "Edit", onSelect: () => setRole(r) },
-                          ...(inUse ? [] : [{ label: "Delete", onSelect: () => window.confirm(`Delete role ${r.name}?`) && saveRoles(roles.filter((x) => x.id !== r.id)) }]),
-                        ]}
-                      />
-                    </td>
                     <td className="font-medium">{r.name}</td>
                     <td className="text-slate-600">{r.description}</td>
                     <td>{r.branches.length ? r.branches.join(", ") : "All branches"}</td>
@@ -83,6 +74,15 @@ export default function UserManagementPage() {
                       </div>
                     </td>
                     <td className="text-right tabular-nums">{inUse}</td>
+                    <td className="whitespace-nowrap">
+                      <RowActions
+                        label={`Actions for ${r.name}`}
+                        items={[
+                          { label: "Edit", onSelect: () => setRole(r) },
+                          ...(inUse ? [] : [{ label: "Delete", onSelect: () => window.confirm(`Delete role ${r.name}?`) && saveRoles(roles.filter((x) => x.id !== r.id)) }]),
+                        ]}
+                      />
+                    </td>
                   </tr>
                 );
               })}
@@ -94,7 +94,6 @@ export default function UserManagementPage() {
           <Table>
             <thead>
               <tr>
-                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Name</th>
                 <th>Department</th>
                 <th>Branch</th>
@@ -102,14 +101,12 @@ export default function UserManagementPage() {
                 <th>Roles</th>
                 <th>Start / End</th>
                 <th>Active</th>
+                <th className="w-px whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
               {users.map((u) => (
                 <tr key={u.id} className="hover:bg-slate-50">
-                  <td className="whitespace-nowrap">
-                    <RowActions label={`Actions for ${userName(u)}`} items={[{ label: "Edit", onSelect: () => setUser(u) }]} />
-                  </td>
                   <td className="font-medium whitespace-nowrap">{userName(u)}</td>
                   <td>{u.department}</td>
                   <td>{u.branch}</td>
@@ -120,6 +117,9 @@ export default function UserManagementPage() {
                   </td>
                   <td>
                     <Badge className={u.active ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : undefined}>{u.active ? "Yes" : "No"}</Badge>
+                  </td>
+                  <td className="whitespace-nowrap">
+                    <RowActions label={`Actions for ${userName(u)}`} items={[{ label: "Edit", onSelect: () => setUser(u) }]} />
                   </td>
                 </tr>
               ))}

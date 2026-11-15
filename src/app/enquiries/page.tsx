@@ -127,7 +127,7 @@ function Enquiries() {
                 stage === s.key ? "bg-brand-600 text-white ring-brand-600" : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50",
               )}
             >
-              {s.label} <span className={stage === s.key ? "text-brand-100" : "text-slate-400"}>{s.n}</span>
+              {s.label} <span className={stage === s.key ? "text-brand-100" : "text-slate-500"}>{s.n}</span>
             </button>
           ))}
         </div>
@@ -170,7 +170,6 @@ function Enquiries() {
           <Table>
             <thead>
               <tr>
-                <th className="w-px whitespace-nowrap">Actions</th>
                 <th aria-sort={newestFirst ? "descending" : "ascending"}>
                   <button onClick={() => setNewestFirst((n) => !n)} className="inline-flex items-center gap-1 rounded-sm hover:text-slate-800 focus-visible:outline-2 focus-visible:outline-brand-500">
                     Enquiry ID {newestFirst ? <ArrowDown size={12} aria-hidden /> : <ArrowUp size={12} aria-hidden />}
@@ -185,21 +184,12 @@ function Enquiries() {
                 <th>POD</th>
                 <th>Status</th>
                 <th>Status Date</th>
+                <th className="w-px whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((e) => (
                 <tr key={e.id} className="hover:bg-slate-50">
-                  <td className="whitespace-nowrap">
-                    <RowActions
-                      label={`Actions for ${e.ref}`}
-                      items={[
-                        { label: "View", href: `/enquiries/${e.id}` },
-                        ...(isEnquiryLocked(e) ? [] : [{ label: "Edit", href: `/enquiries/${e.id}/edit` }]),
-                        { label: "Change Status", onSelect: () => setStatusFor(e) },
-                      ]}
-                    />
-                  </td>
                   <td className="whitespace-nowrap">
                     <Link href={`/enquiries/${e.id}`} className={linkCls}>
                       {e.ref}
@@ -218,7 +208,7 @@ function Enquiries() {
                   </td>
                   <td className="whitespace-nowrap text-slate-600" title={e.connections.map((c) => c.transit).join(" → ")}>
                     {e.route}
-                    {e.route === "Connection" && e.connections.length > 0 && <span className="text-xs text-slate-400"> via {e.connections.map((c) => c.transit).join(", ")}</span>}
+                    {e.route === "Connection" && e.connections.length > 0 && <span className="text-xs text-slate-500"> via {e.connections.map((c) => c.transit).join(", ")}</span>}
                   </td>
                   <td className="whitespace-nowrap">
                     <abbr title={portLabel(e.pod)} className="no-underline">
@@ -230,7 +220,17 @@ function Enquiries() {
                   </td>
                   <td className="whitespace-nowrap text-slate-600">
                     {fmtDate(e.statusAt)}
-                    <div className="text-xs text-slate-400">{laps(e.statusAt)}</div>
+                    <div className="text-xs text-slate-500">{laps(e.statusAt)}</div>
+                  </td>
+                  <td className="whitespace-nowrap">
+                    <RowActions
+                      label={`Actions for ${e.ref}`}
+                      items={[
+                        { label: "View", href: `/enquiries/${e.id}` },
+                        ...(isEnquiryLocked(e) ? [] : [{ label: "Edit", href: `/enquiries/${e.id}/edit` }]),
+                        { label: "Change Status", onSelect: () => setStatusFor(e) },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

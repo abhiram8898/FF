@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EditorContent, type Editor, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Color, FontFamily, FontSize, TextStyle } from "@tiptap/extension-text-style";
@@ -8,7 +8,6 @@ import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
 import Image from "@tiptap/extension-image";
 import { Placeholder } from "@tiptap/extensions";
-import DOMPurify from "dompurify";
 import {
   AlignCenter,
   AlignJustify,
@@ -355,25 +354,4 @@ export function RichTextEditor({
       {children}
     </div>
   );
-}
-
-// Links in mail bodies open in a new tab
-if (typeof window !== "undefined" && DOMPurify.isSupported) {
-  DOMPurify.addHook("afterSanitizeAttributes", (node) => {
-    if (node.tagName === "A") {
-      node.setAttribute("target", "_blank");
-      node.setAttribute("rel", "noopener noreferrer");
-    }
-  });
-}
-
-const noop = () => () => {};
-
-/** Shows a mail body: sanitised HTML from the editor, or plain text as written */
-export function MailBody({ body, className }: { body: string; className?: string }) {
-  // The sanitiser needs the browser DOM, so the server render shows nothing for HTML bodies
-  const client = useSyncExternalStore(noop, () => true, () => false);
-  if (!isHtml(body)) return <pre className={cn("font-sans text-sm leading-relaxed break-words whitespace-pre-wrap text-slate-700", className)}>{body}</pre>;
-  if (!client) return null;
-  return <div className={cn("rich-text text-sm text-slate-700", className)} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(body, { ADD_ATTR: ["target"] }) }} />;
 }

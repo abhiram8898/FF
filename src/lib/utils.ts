@@ -2,6 +2,7 @@ import type {
   Airline,
   AirlineRate,
   AwbStatus,
+  BankDetails,
   Bill,
   BillLine,
   BillStatus,
@@ -610,3 +611,12 @@ export const htmlToText = (s: string) =>
         .replace(/&amp;/g, "&")
         .trim()
     : s;
+
+// ---- Company bank accounts ----
+
+/** The account a bill prints: the one it picked, else the default, else the first */
+export const billBank = (s: Pick<Settings, "banks">, bankId?: string) => s.banks.find((b) => b.id === bankId) ?? s.banks.find((b) => b.isDefault) ?? s.banks[0];
+
+/** "HDFC Bank, Mulanthuruthy · A/C ••7993 (INR)" */
+export const bankLabel = (b: Pick<BankDetails, "bankName" | "bankBranch" | "accountNo" | "accountTitle">) =>
+  `${b.bankName || "Bank"}${b.bankBranch ? `, ${b.bankBranch}` : ""} · A/C ••${b.accountNo.slice(-4) || "—"}${b.accountTitle ? ` (${b.accountTitle})` : ""}`;

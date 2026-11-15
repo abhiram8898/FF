@@ -6,7 +6,7 @@ import { useState } from "react";
 import { CheckCircle2, Eye, Plus, Send, Stamp, Trash2, XCircle } from "lucide-react";
 import { useLookups, useStore } from "@/lib/store";
 import { BILL_STATUSES, type Bill, type BillLine, type BillStatus } from "@/lib/types";
-import { BILL_TONE, amountInWordsIndian, billLineRate, billLineTax, billLineValue, billTotals, f2, fmtDate, isBillLocked, omit, round2, today, uid } from "@/lib/utils";
+import { BILL_TONE, amountInWordsIndian, bankLabel, billBank, billLineRate, billLineTax, billLineValue, billTotals, f2, fmtDate, isBillLocked, omit, round2, today, uid } from "@/lib/utils";
 import { ComposeEmail } from "./ComposeEmail";
 import { FooterBanner } from "./letterhead";
 import { Badge, Button, Card, Field, Input, LinkButton, Modal, SectionTitle, Select, Textarea, useUnsavedChanges } from "./ui";
@@ -29,7 +29,7 @@ export const isOverdue = (b: Bill) => b.kind === "Invoice" && !!b.dueDate && b.d
 export function BillDocument({ bill: b }: { bill: Bill }) {
   const { state } = useStore();
   const c = state.settings.company;
-  const bank = state.settings.bank;
+  const bank = billBank(state.settings, b.bankId);
   const t = billTotals(b);
   const igst = b.taxMode === "IGST";
   const box = "rounded-lg border border-slate-500 p-2";
@@ -269,16 +269,18 @@ export function BillDocument({ bill: b }: { bill: Bill }) {
           <pre className="font-serif whitespace-pre-wrap">{b.notes}</pre>
         </div>
       )}
-      <div className={`${box} mt-2 w-fit min-w-72`}>
-        <b className="underline">Bank Details :</b>
-        {kv([
-          ["BANK NAME", `${bank.bankName} ${bank.bankCity}`.toUpperCase()],
-          ["BRANCH NAME", bank.bankBranch.toUpperCase()],
-          ["A/C No", bank.accountNo],
-          ["IFS Code", bank.ifsc],
-          ...(bank.swift ? ([["SWIFT", bank.swift]] as [string, string][]) : []),
-        ])}
-      </div>
+      {bank && (
+        <div className={`${box} mt-2 w-fit min-w-72`}>
+          <b className="underline">Bank Details :</b>
+          {kv([
+            ["BANK NAME", `${bank.bankName} ${bank.bankCity}`.toUpperCase()],
+            ["BRANCH NAME", bank.bankBranch.toUpperCase()],
+            ["A/C No", bank.accountNo],
+            ["IFS Code", bank.ifsc],
+            ...(bank.swift ? ([["SWIFT", bank.swift]] as [string, string][]) : []),
+          ])}
+        </div>
+      )}
       <p className="mt-2 text-center font-bold">This invoice is system generated and does not require any stamp or signature</p>
       <FooterBanner />
     </div>
@@ -626,13 +628,15 @@ export function BillEditor({ bill }: { bill: Bill }) {
                 <th>GST %</th>
                 <th className="text-right">Value (INR)</th>
                 <th className="text-right">GST</th>
-                <th />
+                <th>
+                <span className="sr-only">Remove</span>
+              </th>
               </tr>
             </thead>
             <tbody>
               {b.lines.map((l, i) => (
                 <tr key={l.id} className="border-t border-slate-100 [&>td]:px-2 [&>td]:py-1.5">
-                  <td className="text-slate-400">{i + 1}</td>
+                  <td className="text-slate-500">{i + 1}</td>
                   <td>
                     <Input
                       aria-label="Particulars"
@@ -747,10 +751,26 @@ export function BillEditor({ bill }: { bill: Bill }) {
             <Textarea rows={5} value={b.notes} disabled={locked} onChange={str("notes")} />
           </Field>
           <div>
-            <div className="mb-1 text-xs font-medium text-slate-700">Bank Details (from Company Set up)</div>
-            <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
-              {state.settings.bank.bankName}, {state.settings.bank.bankBranch} · A/C {state.settings.bank.accountNo} · IFSC {state.settings.bank.ifsc}
-            </div>
+            <Field label="Bank account printed on this bill" hint="Accounts are managed in Company Set up → Bank Account">
+              <Select value={billBank(state.settings, b.bankId)?.id ?? ""} disabled={locked || !state.settings.banks.length} onChange={(e) => set("bankId", e.target.value)}>
+                {!state.settings.banks.length && <option value="">No bank account set up</option>}
+                {state.settings.banks.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {bankLabel(x)}
+                    {x.isDefault ? " · default" : ""}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            {(() => {
+              const x = billBank(state.settings, b.bankId);
+              return x ? (
+                <div className="mt-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
+                  {x.bankName}, {x.bankBranch} · A/C {x.accountNo} · IFSC {x.ifsc}
+                  {x.swift && ` · SWIFT ${x.swift}`}
+                </div>
+              ) : null;
+            })()}
           </div>
         </div>
       </Card>

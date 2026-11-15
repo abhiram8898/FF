@@ -166,7 +166,6 @@ export default function QuotationsPage() {
           <Table>
             <thead>
               <tr>
-                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Quotation ID</th>
                 <th>Date</th>
                 <th>Customer</th>
@@ -175,6 +174,7 @@ export default function QuotationsPage() {
                 <th>Mode</th>
                 <th className="text-right">Grand Total</th>
                 <th>Status</th>
+                <th className="w-px whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -182,32 +182,6 @@ export default function QuotationsPage() {
                 const e = enquiry(x.enquiryId);
                 return (
                   <tr key={x.id} className="hover:bg-slate-50">
-                    <td className="whitespace-nowrap">
-                      <RowActions
-                        label={`Actions for ${x.ref}`}
-                        items={[
-                          { label: "View", onSelect: () => setView(x) },
-                          { label: "Edit", href: `/quotations/${x.id}` },
-                          {
-                            label: "Take Action",
-                            ...(takeActionHref(x)
-                              ? { href: takeActionHref(x)! }
-                              : { onSelect: () => setActionsFor(x) }),
-                          },
-                          {
-                            label: "Status Change / Reminder",
-                            onSelect: () => setActionsFor(x),
-                          },
-                          {
-                            label: "Duplicate",
-                            onSelect: () => router.push(`/quotations/${actions.duplicateQuotation(x.id).id}`),
-                          },
-                          ...(x.status === "Booking Confirmed" && !e?.jobId
-                            ? [{ label: "Convert to Job", href: `/shipments/new?quotation=${x.id}` }]
-                            : []),
-                        ]}
-                      />
-                    </td>
                     <td className="whitespace-nowrap">
                       <Link href={`/quotations/${x.id}`} className={linkCls}>
                         {x.ref}
@@ -233,10 +207,36 @@ export default function QuotationsPage() {
                     <td className="whitespace-nowrap">
                       <StatusBadge status={x.status} />
                       {x.status !== "Draft" && (
-                        <div className="mt-0.5 text-xs text-slate-400">
+                        <div className="mt-0.5 text-xs text-slate-500">
                           {laps(x.statusAt)}
                         </div>
                       )}
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <RowActions
+                        label={`Actions for ${x.ref}`}
+                        items={[
+                          { label: "View", onSelect: () => setView(x) },
+                          { label: "Edit", href: `/quotations/${x.id}` },
+                          {
+                            label: "Take Action",
+                            ...(takeActionHref(x)
+                              ? { href: takeActionHref(x)! }
+                              : { onSelect: () => setActionsFor(x) }),
+                          },
+                          {
+                            label: "Status Change / Reminder",
+                            onSelect: () => setActionsFor(x),
+                          },
+                          {
+                            label: "Duplicate",
+                            onSelect: () => router.push(`/quotations/${actions.duplicateQuotation(x.id).id}`),
+                          },
+                          ...(x.status === "Booking Confirmed" && !e?.jobId
+                            ? [{ label: "Convert to Job", href: `/shipments/new?quotation=${x.id}` }]
+                            : []),
+                        ]}
+                      />
                     </td>
                   </tr>
                 );

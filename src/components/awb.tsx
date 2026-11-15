@@ -47,17 +47,6 @@ export function awbTotals(a: Pick<Awb, "rate" | "chargeableWeight" | "rateClass"
   return { weight, dueAgent, dueCarrier, wtPrepaid, otherPrepaid, prepaid, collect, ccDest, totalCollect: round2(ccDest + (a.chargesAtDestination || 0)) };
 }
 
-/**
- * MAWB number check (box 1): 3-digit airline prefix, 7-digit serial, check digit = serial mod 7.
- * Returns the expected check digit when the number is complete but wrong, "" when fine or not complete.
- */
-export function mawbCheckProblem(no: string) {
-  const digits = no.replace(/\D/g, "");
-  if (digits.length !== 11) return digits.length > 3 ? "An MAWB number has 11 digits: prefix (3) + serial (7) + check digit (1)" : "";
-  const expected = Number(digits.slice(3, 10)) % 7;
-  return Number(digits[10]) === expected ? "" : `Check digit should be ${expected} (serial ${digits.slice(3, 10)} ÷ 7 leaves ${expected})`;
-}
-
 /** "Execute AWB" pre-filled from the job, its enquiry or reservation, and the masters */
 export function awbDraft(s: State, job: Job): AwbInput {
   const enq = s.enquiries.find((e) => e.id === job.enquiryId);
@@ -155,7 +144,6 @@ export function AwbFormModal({ job, existing, onClose, onSaved }: { job: Job; ex
     setA((x) => ({ ...x, [`${kind}Id`]: id || undefined, [kind]: c ? [c.name, c.address].filter(Boolean).join("\n").toUpperCase() : x[kind] }));
   };
   const valid = (a.type === "Master" ? a.mawbNo.trim() : a.hawbNo.trim()) && a.shipper.trim() && a.consignee.trim() && a.legs[0]?.flightNo;
-  const mawbProblem = mawbCheckProblem(a.mawbNo);
   const t = awbTotals(a);
   const setCharge = (id: string, patch: Partial<AwbOtherCharge>) => set("otherCharges", a.otherCharges.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   const grid = "grid grid-cols-1 max-xs:*:col-span-full xs:grid-cols-2 gap-3 sm:grid-cols-4";
@@ -236,8 +224,8 @@ export function AwbFormModal({ job, existing, onClose, onSaved }: { job: Job; ex
             <Field label="HAWB Date">
               <Input type="date" value={a.hawbDate} onChange={str("hawbDate")} disabled={a.type === "Master"} />
             </Field>
-            <Field label="Master AWB No" hint={mawbProblem ? <span className="text-amber-700">{mawbProblem}</span> : "Prefix (3) + serial (7) + check digit (serial ÷ 7)"}>
-              <Input value={a.mawbNo} onChange={str("mawbNo")} placeholder="098-12345675" aria-invalid={!!mawbProblem} />
+            <Field label="Master AWB No">
+              <Input value={a.mawbNo} onChange={str("mawbNo")} placeholder="Enter Master AWB No" />
             </Field>
             <Field label="Master AWB Date">
               <Input type="date" value={a.mawbDate} onChange={str("mawbDate")} />

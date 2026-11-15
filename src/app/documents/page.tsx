@@ -75,7 +75,6 @@ function Documents() {
           <Table>
             <thead>
               <tr>
-                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Job No</th>
                 <th>AWB</th>
                 <th>Customer</th>
@@ -84,6 +83,7 @@ function Documents() {
                 <th>Merged</th>
                 <th>Line Status</th>
                 <th>Job Status</th>
+                <th className="w-px whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -92,17 +92,6 @@ function Documents() {
                 const status = docsLineStatus(j);
                 return (
                   <tr key={j.id} className="hover:bg-slate-50">
-                    <td className="whitespace-nowrap">
-                      <RowActions
-                        label={`Actions for ${j.ref}`}
-                        items={[
-                          { label: "Upload Documents", onSelect: () => setDialog({ kind: "upload", jobId: j.id }) },
-                          ...(j.uploadCompletedAt ? [{ label: "Merge Documents", onSelect: () => setDialog({ kind: "merge", jobId: j.id }) }] : []),
-                          ...(j.merged ? [{ label: "Dispatch To CHA", onSelect: () => setDialog({ kind: "dispatch", jobId: j.id }) }] : []),
-                          { label: "Open job", href: `/shipments/${j.id}` },
-                        ]}
-                      />
-                    </td>
                     <td className="whitespace-nowrap">
                       <Link href={`/shipments/${j.id}`} className={`${linkCls} font-mono text-xs`}>
                         {j.ref}
@@ -130,6 +119,17 @@ function Documents() {
                     </td>
                     <td className="whitespace-nowrap">
                       <StatusBadge status={j.status} />
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <RowActions
+                        label={`Actions for ${j.ref}`}
+                        items={[
+                          { label: "Upload Documents", onSelect: () => setDialog({ kind: "upload", jobId: j.id }) },
+                          ...(j.uploadCompletedAt ? [{ label: "Merge Documents", onSelect: () => setDialog({ kind: "merge", jobId: j.id }) }] : []),
+                          ...(j.merged ? [{ label: "Dispatch To CHA", onSelect: () => setDialog({ kind: "dispatch", jobId: j.id }) }] : []),
+                          { label: "Open job", href: `/shipments/${j.id}` },
+                        ]}
+                      />
                     </td>
                   </tr>
                 );

@@ -99,7 +99,6 @@ export default function RatesPage() {
           <Table>
             <thead>
               <tr>
-                <th className="w-px whitespace-nowrap">Actions</th>
                 <th>Airline</th>
                 <th>Charge Name</th>
                 <th>Charge Code</th>
@@ -111,22 +110,14 @@ export default function RatesPage() {
                 <th>Type</th>
                 <th>Valid From</th>
                 <th>Valid To</th>
+                <th className="w-px whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => {
                 const valid = isRateValid(r);
                 return (
-                  <tr key={r.id} className={cn("hover:bg-slate-50", !valid && "text-slate-400")}>
-                    <td className="whitespace-nowrap">
-                      <RowActions
-                        label={`Actions for ${airline(r.airlineId)?.name} ${r.pol} to ${r.pod}`}
-                        items={[
-                          { label: "Edit", onSelect: () => setEditing(r) },
-                          { label: "Delete", onSelect: () => window.confirm("Delete this rate?") && actions.deleteRate(r.id) },
-                        ]}
-                      />
-                    </td>
+                  <tr key={r.id} className={cn("hover:bg-slate-50", !valid && "text-slate-500")}>
                     <td className="font-medium whitespace-nowrap">
                       {airline(r.airlineId)?.name}
                       {isCheapest(r) && <Badge className="ml-1.5 bg-emerald-50 text-emerald-700 ring-emerald-200">Lowest/kg</Badge>}
@@ -144,6 +135,15 @@ export default function RatesPage() {
                     <td className="whitespace-nowrap">{fmtDate(r.validFrom)}</td>
                     <td className="whitespace-nowrap">
                       {fmtDate(r.validUntil)} {!valid && <Badge className="ml-1 bg-red-50 text-red-600 ring-red-200">Expired</Badge>}
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <RowActions
+                        label={`Actions for ${airline(r.airlineId)?.name} ${r.pol} to ${r.pod}`}
+                        items={[
+                          { label: "Edit", onSelect: () => setEditing(r) },
+                          { label: "Delete", onSelect: () => window.confirm("Delete this rate?") && actions.deleteRate(r.id) },
+                        ]}
+                      />
                     </td>
                   </tr>
                 );
