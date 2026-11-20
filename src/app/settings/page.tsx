@@ -373,6 +373,7 @@ function SettingsForm() {
     ["Reservation Number", "reservationRef", ["company", "client", "branch", "seq", "year"], "Given when a reservation is created; each recurring occurrence gets its own.", state.counters.reservation],
     ["Job Number", "jobRef", ["company", "client", "branch", "pol", "pod", "seq", "year"], "Given when a job is created from a quotation or reservation.", state.counters.job],
     ["Invoice Number", "invoiceRef", ["company", "client", "branch", "seq", "year"], "Tax invoices. Proformas use the same format starting with P (PINV-…); credit notes swap INV for CN.", state.counters.invoice],
+    ["House AWB Number", "hawbRef", ["company", "branch", "seq", "year"], "Given on save to House AWBs set to \"HAWB by Own\". \"HAWB by Others\" numbers are typed in.", state.counters.hawb],
   ];
   const noSeq = patterns.find(([, k]) => !s[k].parts.includes("seq"));
   const lists: [string, number][] = [

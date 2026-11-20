@@ -39,11 +39,12 @@ export default function ShipmentPage() {
 function ShipmentView({ job, openAwb }: { job: Job; openAwb: boolean }) {
   const router = useRouter();
   const { state, actions } = useStore();
-  const { enquiry, quotation, reservation, awbOf } = useLookups();
+  const { enquiry, quotation, reservation, awbsOf } = useLookups();
   const enq = enquiry(job.enquiryId);
   const q = quotation(job.quotationId);
   const res = reservation(job.reservationId);
-  const awb = awbOf(job.id);
+  const awbs = awbsOf(job.id);
+  const awb = awbs[0];
   const bills = state.bills.filter((b) => b.jobId === job.id);
   // Everything except identity and the documents workflow is edited in the form
   const editable = omit(job, ["id", "ref", "createdAt", "statusAt", "uploadCompletedAt", "merged", "dispatchedAt"]);
@@ -110,12 +111,16 @@ function ShipmentView({ job, openAwb }: { job: Job; openAwb: boolean }) {
           <BookingJobForm key={JSON.stringify(editable)} initial={editable} jobRef={job.ref} submitLabel="Save changes" requireChanges onSubmit={(data) => actions.updateJob(job.id, data)} />
         </div>
         <aside className="min-w-0 space-y-3">
-          <Card title="Airway Bill">
+          <Card title={awbs.length > 1 ? `Airway Bills (${awbs.length})` : "Airway Bill"}>
             {awb ? (
-              <div className="space-y-1 text-sm">
-                <div className="font-mono font-medium">{awbLabel(awb)}</div>
-                {awb.type === "House" && <div className="font-mono text-xs text-slate-500">MAWB {awb.mawbNo}</div>}
-                <Badge className={AWB_TONE[awb.status]}>{awb.status}</Badge>
+              <div className="space-y-2 text-sm">
+                {awb.mawbNo && awbs.some((a) => a.type === "House") && <div className="font-mono text-xs text-slate-500">MAWB {awb.mawbNo}</div>}
+                {awbs.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between gap-2">
+                    <span className="font-mono font-medium">{awbLabel(a)}</span>
+                    <Badge className={AWB_TONE[a.status]}>{a.status}</Badge>
+                  </div>
+                ))}
                 <div>
                   <Link href="/awbs" className={`${linkCls} text-xs`}>
                     All airway bills
@@ -134,7 +139,7 @@ function ShipmentView({ job, openAwb }: { job: Job; openAwb: boolean }) {
                 ["Status", docsLineStatus(job)],
                 ["Uploaded", String(job.documents.length)],
                 ["Merged", job.merged ? fmtDateTime(job.merged.at) : ""],
-                ["Dispatched to CHA", job.dispatchedAt ? fmtDateTime(job.dispatchedAt) : ""],
+                ["Pre-alert sent", job.dispatchedAt ? fmtDateTime(job.dispatchedAt) : ""],
               ]}
             />
             {job.merged?.dataUrl && (

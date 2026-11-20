@@ -157,6 +157,16 @@ export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInp
   return <input className={cn(inputCls, className)} {...props} />;
 }
 
+/** "Go to date" on the calendar pages: jumps the month / week shown to the picked day */
+export function DateJump({ value, onChange }: { value: string; onChange: (isoDate: string) => void }) {
+  return (
+    <label className="flex shrink-0 items-center gap-1.5 text-xs font-medium whitespace-nowrap text-slate-600">
+      Go to date
+      <Input type="date" name="go-to-date" value={value} onChange={(e) => e.target.value && onChange(e.target.value)} className="w-36" />
+    </label>
+  );
+}
+
 export function Select({ className, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return <select className={cn(inputCls, "pr-8", className)} {...props} />;
 }
@@ -708,7 +718,7 @@ const ACTION_STYLES: [RegExp, LucideIcon, ActionTone][] = [
   [/manage documents/i, FileStack, "docs"],
   [/upload/i, Upload, "docs"],
   [/merge/i, Combine, "docs"],
-  [/dispatch/i, Send, "docs"],
+  [/dispatch|pre-alert/i, Send, "docs"],
   [/booking portal/i, ExternalLink, "neutral"],
   [/^email|mail desk/i, Mail, "neutral"],
   [/read email/i, MailOpen, "view"],

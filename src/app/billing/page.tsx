@@ -59,7 +59,7 @@ function Billing() {
     <>
       <PageHeader
         title="Debit Note"
-        subtitle="Billing starts after the documents reach the CHA and the job departs: a proforma is created automatically, sent for confirmation, then approved into the tax invoice."
+        subtitle="Billing starts after the pre-alert goes to the shipper and the job departs: a proforma is created automatically, sent for confirmation, then approved into the tax invoice."
       />
       <Tabs
         tabs={TABS}

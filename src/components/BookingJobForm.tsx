@@ -243,7 +243,7 @@ export function BookingJobForm({
             tempLabel="Temporary CHA"
             onChange={(v) => setF((x) => ({ ...x, chaId: v.id, chaName: v.name, chaEmail: chas.find((c) => c.id === v.id)?.email ?? "" }))}
           />
-          <Field label="CHA Email" hint="Documents are dispatched to this address">
+          <Field label="CHA Email" hint="For reference; the pre-alert goes to the shipper">
             <Input type="email" value={f.chaEmail} onChange={text("chaEmail")} disabled={!!f.chaId} />
           </Field>
           <Field label="TSP (Additional)">

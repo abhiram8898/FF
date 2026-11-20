@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
   CalendarRange,
@@ -32,11 +32,14 @@ import {
   fmtDate,
   matches,
   today,
+  isoDay,
+  utcDay,
 } from "@/lib/utils";
 import {
   Badge,
   Button,
   Card,
+  DateJump,
   FilterBar,
   FilterSelect,
   Kpi,
@@ -53,8 +56,8 @@ import {
 import { CancelModal, RescheduleModal } from "@/components/reservation";
 
 type View = "Month" | "Week" | "List";
-const iso = (d: Date) => d.toISOString().slice(0, 10);
-const utc = (s: string) => new Date(`${s}T00:00:00Z`);
+const iso = isoDay;
+const utc = utcDay;
 const PENDING: ReservationStatus[] = [
   "Reserved",
   "Ready for Booking",
@@ -95,6 +98,11 @@ export default function PlannerPage() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<"all" | ReservationStatus>("all");
   const [mode, setMode] = useState<"all" | "Air" | "Sea">("all");
+  const [airlineId, setAirlineId] = useState("all");
+  const airlineCode = (id: string) => {
+    const a = state.airlines.find((x) => x.id === id);
+    return a?.code || a?.name || "";
+  };
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [kpi, setKpi] = useState<string | null>(null);
   const selected = state.reservations.find((r) => r.id === selectedId);
@@ -158,20 +166,29 @@ export default function PlannerPage() {
   ];
   const kpiDef = KPIS.find((k) => k.id === kpi);
   // "Upcoming" looks a week ahead regardless of the month shown; the rest count the period on screen
+  // Search, status, mode and airline: applied to the calendar and to the KPI counts alike
+  const byFilters = (list: Reservation[]) =>
+    list.filter(
+      (r) =>
+        (status === "all" || r.status === status) &&
+        (mode === "all" || r.cargoMode === mode) &&
+        (airlineId === "all" || r.airlineId === airlineId) &&
+        matches(q, [
+          customer(r.customerId)?.name,
+          r.ref,
+          r.pol,
+          r.pod,
+          r.commodity,
+        ]),
+    );
   const base = kpiDef?.all ? state.reservations : inPeriod;
-  const visible = base.filter(
-    (r) =>
-      (!kpiDef || kpiDef.test(r)) &&
-      (status === "all" || r.status === status) &&
-      (mode === "all" || r.cargoMode === mode) &&
-      matches(q, [
-        customer(r.customerId)?.name,
-        r.ref,
-        r.pol,
-        r.pod,
-        r.commodity,
-      ]),
-  );
+  const visible = byFilters(base).filter((r) => !kpiDef || kpiDef.test(r));
+  // The picked day (Go to date, Today, the arrows) is scrolled into view: a month is wider than the screen
+  useEffect(() => {
+    document
+      .querySelector(`[data-day="${anchor}"]`)
+      ?.scrollIntoView({ inline: "center", block: "nearest" });
+  }, [anchor, view]);
   const customerIds = [...new Set(visible.map((r) => r.customerId))].sort(
     (a, b) => (customer(a)?.name ?? "").localeCompare(customer(b)?.name ?? ""),
   );
@@ -226,7 +243,8 @@ export default function PlannerPage() {
             tone={k.tone}
             label={k.label}
             value={
-              (k.all ? state.reservations : inPeriod).filter(k.test).length
+              byFilters(k.all ? state.reservations : inPeriod).filter(k.test)
+                .length
             }
             active={kpi === k.id}
             onClick={() => setKpi(kpi === k.id ? null : k.id)}
@@ -259,6 +277,7 @@ export default function PlannerPage() {
         <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
           <CalendarRange size={15} aria-hidden /> {periodLabel}
         </span>
+        <DateJump value={anchor} onChange={setAnchor} />
         <div className="ml-auto flex overflow-hidden rounded-lg ring-1 ring-slate-300">
           {[
             viewBtn("Month", CalendarDays),
@@ -293,6 +312,18 @@ export default function PlannerPage() {
           <option value="all">Air & Sea</option>
           <option value="Air">Air Freight</option>
           <option value="Sea">Sea Freight</option>
+        </FilterSelect>
+        <FilterSelect
+          label="Airline"
+          value={airlineId}
+          onChange={(e) => setAirlineId(e.target.value)}
+        >
+          <option value="all">All Airlines</option>
+          {state.airlines.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
         </FilterSelect>
       </FilterBar>
 
@@ -389,6 +420,7 @@ export default function PlannerPage() {
                   setQ(""),
                   setStatus("all"),
                   setMode("all"),
+                  setAirlineId("all"),
                   setKpi(null)
                 )}
               >
@@ -415,22 +447,34 @@ export default function PlannerPage() {
                 {days.map((d) => {
                   const dt = utc(d);
                   const isToday = d === t;
+                  // The day picked in Go to date, when it isn't today
+                  const picked = d === anchor && !isToday;
                   return (
                     <div
                       key={d}
+                      data-day={d}
+                      aria-current={picked ? "date" : undefined}
                       className={cn(
                         "border-b border-l border-slate-100 px-1.5 py-1.5 text-center text-xs",
                         isToday
                           ? "bg-brand-50 font-semibold text-brand-700"
-                          : "text-slate-500",
+                          : picked
+                            ? "bg-amber-50 font-semibold text-amber-800 ring-2 ring-amber-400 ring-inset"
+                            : "text-slate-500",
                         [0, 6].includes(dt.getUTCDay()) &&
                           !isToday &&
+                          !picked &&
                           "bg-slate-50/70",
                       )}
                     >
                       {isToday && (
-                        <div className="mx-auto mb-0.5 w-fit rounded bg-brand-600 px-1.5 text-[0.6875rem] text-white">
+                        <div className="mx-auto mb-0.5 w-fit rounded bg-navy-900 px-1.5 text-[0.6875rem] text-white dark:bg-[#2a62e6]">
                           Today
+                        </div>
+                      )}
+                      {picked && (
+                        <div className="mx-auto mb-0.5 w-fit rounded bg-amber-500 px-1.5 text-[0.6875rem] font-semibold text-navy-900">
+                          Selected
                         </div>
                       )}
                       <div>
@@ -473,6 +517,12 @@ export default function PlannerPage() {
                               d === t && "bg-brand-50/40",
                             )}
                           >
+                            {/* Several bookings by this customer on one day (e.g. on different airlines) */}
+                            {items.length > 1 && (
+                              <div className="px-0.5 text-[0.6875rem] font-semibold text-slate-600">
+                                {items.length} bookings
+                              </div>
+                            )}
                             {items.map((r) => (
                               <button
                                 key={r.id}
@@ -485,13 +535,18 @@ export default function PlannerPage() {
                                   r.status === "Cancelled" &&
                                     "line-through opacity-70",
                                 )}
-                                title={`${r.ref} · ${r.status}`}
+                                title={`${r.ref} · ${state.airlines.find((a) => a.id === r.airlineId)?.name ?? "No airline"} · ${r.status}`}
                               >
                                 <span className="flex items-center gap-1 font-semibold">
                                   {r.cargoMode === "Air" ? (
                                     <Plane size={11} aria-hidden />
                                   ) : (
                                     <Ship size={11} aria-hidden />
+                                  )}
+                                  {airlineCode(r.airlineId) && (
+                                    <span className="rounded border border-current/40 px-1 font-mono text-[0.6875rem]">
+                                      {airlineCode(r.airlineId)}
+                                    </span>
                                   )}
                                   {r.pol} → {r.pod}
                                   {r.seriesId && (
@@ -524,20 +579,28 @@ export default function PlannerPage() {
                   })
                 ) : (
                   <div className="col-span-full p-3">
-                    <NoResults
-                      filtered={
-                        !!q || status !== "all" || mode !== "all" || !!kpi
-                      }
-                      onClear={() => (
-                        setQ(""),
-                        setStatus("all"),
-                        setMode("all"),
-                        setKpi(null)
-                      )}
-                    >
-                      No reservations in this period. Use New Reservation to
-                      plan one.
-                    </NoResults>
+                    {/* Kept on screen while the month is scrolled sideways (e.g. after Go to date) */}
+                    <div className="sticky left-3 w-[min(48rem,calc(100vw-3rem))]">
+                      <NoResults
+                        filtered={
+                          !!q ||
+                          status !== "all" ||
+                          mode !== "all" ||
+                          airlineId !== "all" ||
+                          !!kpi
+                        }
+                        onClear={() => (
+                          setQ(""),
+                          setStatus("all"),
+                          setMode("all"),
+                          setAirlineId("all"),
+                          setKpi(null)
+                        )}
+                      >
+                        No reservations in this period. Use New Reservation to
+                        plan one.
+                      </NoResults>
+                    </div>
                   </div>
                 )}
               </div>

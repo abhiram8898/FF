@@ -1,16 +1,17 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element -- logos are user-uploaded data URLs */
-import { useState } from "react";
-import { Eye, Plus, Printer, Send, Trash2 } from "lucide-react";
-import { type AwbInput, useLookups, useStore } from "@/lib/store";
-import { AWB_STATUSES, CHGS_CODES, FREIGHT_TERMS, RATE_CLASSES, type Awb, type AwbLeg, type AwbOtherCharge, type AwbStatus, type Job, type State } from "@/lib/types";
-import { AWB_TONE, cn, f2, fmtDate, fmtPort, parseRate, round2, today, uid, volumeCbm } from "@/lib/utils";
+import { useEffect, useRef, useState } from "react";
+import { Eye, Plus, Printer, Send, Trash2, X } from "lucide-react";
+import { type AwbInput, awbMissing, nextHawbNo, useLookups, useStore } from "@/lib/store";
+import { AWB_STATUSES, CHGS_CODES, FREIGHT_TERMS, RATE_CLASSES, type Awb, type AwbLeg, type AwbOtherCharge, type AwbStatus, type HawbSource, type Job, type State } from "@/lib/types";
+import { AWB_TONE, awbLabel, awbNumber, cn, f2, fmtDate, fmtPort, omit, parseRate, round2, today, uid, volumeCbm } from "@/lib/utils";
 import { ComposeEmail } from "./ComposeEmail";
+import { AWB_COPIES, type AwbCopy, type AwbPrintOptions } from "./awbCopies";
+import { AwbPrintDialog, DEFAULT_PRINT, type PrintChoice, RATE_MODES, type RateMode, type Stationery } from "./awbPrint";
 import { Badge, Button, DISCARD_CHANGES, Field, Input, Modal, SectionTitle, Select, Textarea } from "./ui";
 
-const awbNumber = (a: Pick<Awb, "type" | "hawbNo" | "mawbNo">) => (a.type === "House" ? a.hawbNo || a.mawbNo : a.mawbNo);
-export const awbLabel = (a: Pick<Awb, "type" | "hawbNo" | "mawbNo">) => `${a.type === "House" ? "HAWB" : "MAWB"} ${awbNumber(a) || "—"}`;
+export { awbLabel };
 /** Weight charge: rate × chargeable weight, or the flat minimum charge for rate class M */
 export const awbTotal = (a: Pick<Awb, "rate" | "chargeableWeight"> & Partial<Pick<Awb, "rateClass">>) => round2(a.rateClass === "M" ? a.rate : a.rate * a.chargeableWeight);
 
@@ -66,7 +67,8 @@ export function awbDraft(s: State, job: Job): AwbInput {
   return {
     jobId: job.id,
     type: "House",
-    hawbNo: job.bookingRef,
+    hawbSource: "Own",
+    hawbNo: "",
     hawbDate: today(),
     mawbNo: job.awbNo || (airline?.prefix ? `${airline.prefix}-` : ""),
     mawbDate: today(),
@@ -107,7 +109,9 @@ export function awbDraft(s: State, job: Job): AwbInput {
     netWeight: 0,
     chargeableWeight: job.weight,
     rate: freight ? freight.rate + freight.markup : parseRate(job.rate),
-    invoiceDetails: job.invoiceNo,
+    invoiceDetails: "",
+    invoiceNo: job.invoiceNo,
+    invoiceDate: "",
     valuationCharge: 0,
     tax: 0,
     // AWB fee and other airline charges from the quotation
@@ -125,14 +129,79 @@ export function awbDraft(s: State, job: Job): AwbInput {
   };
 }
 
-/** Execute AWB pop-up (FRD VII): Section I general, II airline, III cargo & freight. Save keeps it as Draft. */
+type AwbTab = AwbInput & { id?: string; key: string };
+
+/** A new House AWB tab under the same MAWB: header details kept, everything else blank (number-only HAWB) */
+function blankHawb(from: AwbTab): AwbTab {
+  return {
+    ...from,
+    // A new record: never carry the source tab's id, or saving would overwrite that AWB
+    id: undefined,
+    key: uid(),
+    type: "House",
+    hawbNo: "",
+    shipperId: undefined,
+    shipper: "",
+    shipperAccount: "",
+    consigneeId: undefined,
+    consignee: "",
+    consigneeAccount: "",
+    notifyParty: "SAME AS CONSIGNEE",
+    optionalShippingInfo: "",
+    sci: "",
+    commodity: "",
+    pieces: 0,
+    volume: 0,
+    grossWeight: 0,
+    netWeight: 0,
+    chargeableWeight: 0,
+    rate: 0,
+    valuationCharge: 0,
+    tax: 0,
+    otherCharges: [],
+    invoiceDetails: "",
+    invoiceNo: "",
+    invoiceDate: "",
+    natureOfGoods: "",
+    legs: from.legs.map((l) => ({ ...l, id: uid() })),
+  };
+}
+
+/** Number shown on a tab or in the picker; an "Own" number not saved yet shows as pending */
+const tabNumber = (a: AwbInput, auto: boolean) => (a.type === "Master" ? a.mawbNo : a.hawbNo) || (auto && a.hawbSource === "Own" ? "Number on save" : "No number yet");
+
+/**
+ * Execute AWB pop-up (FRD VII): Section I general, II airline, III cargo & freight. Save keeps it as Draft.
+ * One MAWB can carry several House AWBs: each is a tab, added as a number only or as a copy of the open one.
+ */
 export function AwbFormModal({ job, existing, onClose, onSaved }: { job: Job; existing?: Awb; onClose: () => void; onSaved?: (a: Awb) => void }) {
   const { state, actions } = useStore();
-  const [a, setA] = useState<AwbInput>(() => existing ?? awbDraft(state, job));
-  const [start] = useState(() => JSON.stringify(a));
-  const dirty = JSON.stringify(a) !== start;
-  const [preview, setPreview] = useState(false);
-  const set = <K extends keyof AwbInput>(k: K, v: AwbInput[K]) => setA((x) => ({ ...x, [k]: v }));
+  const [tabs, setTabs] = useState<AwbTab[]>(() => {
+    const saved = state.awbs.filter((x) => x.jobId === job.id && x.status !== "Cancelled").sort((x, y) => x.createdAt.localeCompare(y.createdAt));
+    const list = existing && !saved.some((x) => x.id === existing.id) ? [...saved, existing] : saved;
+    return list.length ? list.map((x) => ({ ...omit(x, ["status", "statusAt", "createdAt", "sentAt"]), key: x.id })) : [{ ...awbDraft(state, job), key: uid() }];
+  });
+  const [active, setActive] = useState(() => Math.max(0, tabs.findIndex((t) => t.id === existing?.id)));
+  const a = tabs[active];
+  const [start] = useState(() => JSON.stringify(tabs));
+  const dirty = JSON.stringify(tabs) !== start;
+  const [preview, setPreview] = useState<AwbTab | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [addMenu, setAddMenu] = useState(false);
+  const addRef = useRef<HTMLDivElement>(null);
+  // Number typed under "Others" for each tab, so switching to Own and back doesn't lose it
+  const typedNo = useRef<Record<string, string>>({});
+  useEffect(() => {
+    if (!addMenu) return;
+    addRef.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
+    const away = (e: MouseEvent) => !addRef.current?.contains(e.target as Node) && setAddMenu(false);
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [addMenu]);
+  // The MAWB is shared by every House AWB on the job
+  const SHARED: (keyof AwbInput)[] = ["mawbNo", "mawbDate"];
+  const set = <K extends keyof AwbInput>(k: K, v: AwbInput[K]) => setTabs((list) => list.map((t, i) => (i === active || SHARED.includes(k) ? { ...t, [k]: v } : t)));
+  const setA = (fn: (x: AwbTab) => AwbTab) => setTabs((list) => list.map((t, i) => (i === active ? fn(t) : t)));
   const str = (k: keyof AwbInput, upper = false) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     set(k, (upper ? e.target.value.toUpperCase() : e.target.value) as never);
   const num = (k: keyof AwbInput) => (e: React.ChangeEvent<HTMLInputElement>) => set(k, Number(e.target.value) as never);
@@ -143,7 +212,19 @@ export function AwbFormModal({ job, existing, onClose, onSaved }: { job: Job; ex
     const c = parties.find((x) => x.id === id);
     setA((x) => ({ ...x, [`${kind}Id`]: id || undefined, [kind]: c ? [c.name, c.address].filter(Boolean).join("\n").toUpperCase() : x[kind] }));
   };
-  const valid = (a.type === "Master" ? a.mawbNo.trim() : a.hawbNo.trim()) && a.shipper.trim() && a.consignee.trim() && a.legs[0]?.flightNo;
+  // Saving needs each tab's number (a number-only HAWB is fine); executing later needs the full details
+  const ownAuto = state.settings.hawbRef.auto;
+  const autoNo = (t: AwbInput) => ownAuto && t.hawbSource === "Own";
+  const numbered = (t: AwbInput) => (t.type === "Master" ? !!t.mawbNo.trim() : autoNo(t) || !!t.hawbNo.trim());
+  const gaps = (t: AwbInput) => awbMissing({ ...t, hawbNo: autoNo(t) ? t.hawbNo || "auto" : t.hawbNo });
+  // An executed AWB has to stay complete; drafts may be saved with the number only
+  const executed = (t: AwbTab) => state.awbs.some((x) => x.id === t.id && x.status === "AWB Executed");
+  const brokenExecuted = tabs.filter((t) => executed(t) && gaps(t).length);
+  const valid = tabs.every(numbered) && !brokenExecuted.length;
+  const incomplete = tabs.filter((t) => gaps(t).length);
+  // Preview numbers for "Own" HAWBs not saved yet, in tab order
+  const pendingOwn = tabs.filter((t) => t.hawbSource === "Own" && !t.hawbNo && !state.awbs.some((x) => x.id === t.id && x.hawbSource === "Own" && x.hawbNo));
+  const ownPreview = (t: AwbTab) => nextHawbNo(state, job.branch, pendingOwn.indexOf(t) + 1);
   const t = awbTotals(a);
   const setCharge = (id: string, patch: Partial<AwbOtherCharge>) => set("otherCharges", a.otherCharges.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   const grid = "grid grid-cols-1 max-xs:*:col-span-full xs:grid-cols-2 gap-3 sm:grid-cols-4";
@@ -164,41 +245,65 @@ export function AwbFormModal({ job, existing, onClose, onSaved }: { job: Job; ex
     </datalist>
   );
 
-  const save = () => {
-    const saved = actions.saveAwb(a, existing?.id);
-    onSaved?.(saved);
-    return saved;
+  const addTab = (copy: boolean) => {
+    const next: AwbTab = copy ? { ...a, id: undefined, key: uid(), type: "House", hawbNo: "", legs: a.legs.map((l) => ({ ...l, id: uid() })), otherCharges: a.otherCharges.map((c) => ({ ...c, id: uid() })) } : blankHawb(a);
+    setTabs((list) => [...list, next]);
+    setActive(tabs.length);
+    setAddMenu(false);
+  };
+  const removeTab = (i: number) => {
+    setTabs((list) => list.filter((_, j) => j !== i));
+    setActive((x) => Math.max(0, x >= i ? x - 1 : x));
   };
 
-  if (preview) {
-    const draft: Awb = { ...a, id: existing?.id ?? "preview", status: existing?.status ?? "Draft", statusAt: existing?.statusAt ?? "", createdAt: existing?.createdAt ?? "" };
-    return <AwbPreviewModal awb={draft} onClose={() => setPreview(false)} onBack={() => setPreview(false)} unsaved={!existing} />;
-  }
+  const save = () => {
+    const saved = actions.saveAwbs(job.id, tabs.map((x) => omit(x, ["key"])));
+    if (saved) onSaved?.(saved[active]);
+    return saved;
+  };
+  const asAwb = (x: AwbTab): Awb => {
+    const prev = state.awbs.find((y) => y.id === x.id);
+    return { ...omit(x, ["key"]), hawbNo: autoNo(x) && !x.hawbNo ? ownPreview(x) : x.hawbNo, id: x.id ?? `preview-${x.key}`, status: prev?.status ?? "Draft", statusAt: prev?.statusAt ?? "", createdAt: prev?.createdAt ?? "" };
+  };
+
+  if (preview) return <AwbPreviewModal awb={asAwb(preview)} siblings={tabs.map(asAwb)} onClose={() => setPreview(null)} onBack={() => setPreview(null)} unsaved={!preview.id || dirty} />;
+  if (picking) return <AwbPicker awbs={tabs.map(asAwb)} onPick={(i) => (setPicking(false), setPreview(tabs[i]))} onClose={() => setPicking(false)} />;
 
   return (
     <Modal
       open
       onClose={onClose}
       wide
-      title={existing ? `Edit AWB · ${awbLabel(existing)}` : `Execute AWB · ${job.ref}`}
+      title={`${tabs.some((x) => x.id) ? "Edit AWB" : "Execute AWB"} · ${job.ref}`}
       confirmClose={dirty && DISCARD_CHANGES}
       footer={
         <>
-          {!valid && <span className="mr-auto self-center text-xs text-amber-700">Fill in the AWB number, shipper, consignee and the first flight.</span>}
+          <span className="mr-auto self-center text-xs">
+            {brokenExecuted.length ? (
+              <span className="text-amber-700">
+                {brokenExecuted.map(awbLabel).join(", ")} {brokenExecuted.length > 1 ? "are" : "is"} executed: add the {[...new Set(brokenExecuted.flatMap(gaps))].join(", ")} to save.
+              </span>
+            ) : !valid ? (
+              <span className="text-amber-700">{ownAuto ? "Give every tab its AWB number (or choose HAWB by Own)." : "Give every tab its AWB number (automatic numbering is off in Settings)."}</span>
+            ) : incomplete.length ? (
+              <span className="text-slate-600">
+                {incomplete.length} of {tabs.length} saved as incomplete. Add the shipper, consignee and first flight before executing.
+              </span>
+            ) : null}
+          </span>
           <Button variant="secondary" onClick={() => (!dirty || window.confirm(DISCARD_CHANGES)) && onClose()}>
             Cancel
           </Button>
-          <Button variant="secondary" onClick={() => setPreview(true)}>
+          <Button variant="secondary" onClick={() => (tabs.length > 1 ? setPicking(true) : setPreview(a))}>
             <Eye size={14} aria-hidden /> Preview
           </Button>
           <Button
             disabled={!valid}
             onClick={() => {
-              save();
-              onClose();
+              if (save()) onClose();
             }}
           >
-            Save
+            Save{tabs.length > 1 ? ` all (${tabs.length})` : ""}
           </Button>
         </>
       }
@@ -218,13 +323,72 @@ export function AwbFormModal({ job, existing, onClose, onSaved }: { job: Job; ex
                 <option value="Master">Master AWB (MAWB)</option>
               </Select>
             </Field>
-            <Field label="House AWB No" hint="Booking reference from the booking screen">
-              <Input value={a.hawbNo} onChange={str("hawbNo", true)} disabled={a.type === "Master"} />
+            <Field label="HAWB by" hint={a.hawbSource !== "Own" ? "Type the number given by the other agent" : ownAuto ? "Number from Settings → Ref Number Format" : "Automatic numbering is off: type your own number"}>
+              <Select
+                value={a.hawbSource ?? "Others"}
+                onChange={(e) => {
+                  const src = e.target.value as HawbSource;
+                  const prev = state.awbs.find((x) => x.id === a.id);
+                  if (a.hawbSource !== "Own") typedNo.current[a.key] = a.hawbNo;
+                  // Back to the saved number, or the one typed earlier; otherwise Own is numbered on save and Others starts empty
+                  setA((x) => ({ ...x, hawbSource: src, hawbNo: prev?.hawbSource === src ? prev.hawbNo : src === "Others" ? (typedNo.current[x.key] ?? "") : "" }));
+                }}
+              >
+                <option value="Own">HAWB by Own</option>
+                <option value="Others">HAWB by Others</option>
+              </Select>
             </Field>
+            <div
+              ref={addRef}
+              className="relative flex min-w-0 flex-col gap-1"
+              onKeyDown={(e) => {
+                // Escape closes the menu only, not the whole form
+                if (e.key === "Escape" && addMenu) {
+                  e.stopPropagation();
+                  setAddMenu(false);
+                  addRef.current?.querySelector<HTMLElement>("[aria-haspopup]")?.focus();
+                }
+              }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="awb-hawb-no" className="text-xs font-medium text-slate-700">
+                  House AWB No
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setAddMenu((o) => !o)}
+                  aria-haspopup="menu"
+                  aria-expanded={addMenu}
+                  aria-controls="awb-add-menu"
+                  aria-label="Add House AWB"
+                  className="flex items-center gap-0.5 rounded text-xs font-semibold text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500"
+                >
+                  <Plus size={13} aria-hidden /> Add
+                </button>
+              </div>
+              {autoNo(a) ? (
+                <Input id="awb-hawb-no" value={a.hawbNo || ownPreview(a)} readOnly className={cn("font-mono", !a.hawbNo && "text-slate-500 italic")} title={a.hawbNo ? undefined : "Given when the AWB is saved"} />
+              ) : (
+                <Input id="awb-hawb-no" value={a.hawbNo} onChange={str("hawbNo", true)} placeholder="Add manually" className="font-mono" />
+              )}
+              <span className="text-xs text-slate-500">{autoNo(a) ? (a.hawbNo ? "Company sequence" : "Next number, given on save") : "Entered by hand"}</span>
+              {addMenu && (
+                <div id="awb-add-menu" role="menu" aria-label="Add House AWB" className="menu-in absolute top-12 right-0 z-30 w-64 overflow-hidden rounded-xl bg-white p-1 shadow-xl ring-1 ring-slate-200">
+                  <button type="button" role="menuitem" onClick={() => addTab(false)} className="block w-full rounded-lg px-3 py-2 text-left hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-2 focus-visible:outline-brand-500">
+                    <span className="block text-sm font-medium text-slate-800">New HAWB (number only)</span>
+                    <span className="block text-xs text-slate-500">Add the number now, fill the details later</span>
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => addTab(true)} className="block w-full rounded-lg px-3 py-2 text-left hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-2 focus-visible:outline-brand-500">
+                    <span className="block text-sm font-medium text-slate-800">Duplicate this HAWB</span>
+                    <span className="block text-xs text-slate-500">Same details, number left empty</span>
+                  </button>
+                </div>
+              )}
+            </div>
             <Field label="HAWB Date">
-              <Input type="date" value={a.hawbDate} onChange={str("hawbDate")} disabled={a.type === "Master"} />
+              <Input type="date" value={a.hawbDate} onChange={str("hawbDate")} />
             </Field>
-            <Field label="Master AWB No">
+            <Field label="Master AWB No" hint={tabs.length > 1 ? "Shared by all HAWBs" : undefined}>
               <Input value={a.mawbNo} onChange={str("mawbNo")} placeholder="Enter Master AWB No" />
             </Field>
             <Field label="Master AWB Date">
@@ -240,6 +404,37 @@ export function AwbFormModal({ job, existing, onClose, onSaved }: { job: Job; ex
             <Field label="Freight Term Details">
               <Input value={a.freightTermDetails} onChange={str("freightTermDetails", true)} />
             </Field>
+            {/* One tab per AWB on this job; the open one is highlighted */}
+            <div role="group" aria-label="AWBs on this job" className="col-span-full flex flex-wrap items-center gap-1.5 rounded-xl bg-slate-50 p-1.5 ring-1 ring-slate-200">
+              {tabs.map((x, i) => {
+                const on = i === active;
+                const missing = gaps(x).length > 0;
+                return (
+                  <span key={x.key} className="flex items-center">
+                    <button
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => setActive(i)}
+                      title={missing ? "Details incomplete" : undefined}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-brand-500",
+                        on ? "bg-navy-900 text-white shadow-sm dark:bg-[#2a62e6]" : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-brand-50 hover:text-brand-700",
+                        !x.id && !on && "border border-dashed border-slate-300",
+                      )}
+                    >
+                      {missing && <span className="size-1.5 rounded-full bg-amber-500" aria-hidden />}
+                      {x.type === "Master" ? "MAWB" : `HAWB ${i + 1}`}
+                      <span className={cn("font-mono font-normal", on ? "text-white/80" : "text-slate-500")}>{tabNumber(x, ownAuto)}</span>
+                    </button>
+                    {!x.id && tabs.length > 1 && (
+                      <button type="button" onClick={() => removeTab(i)} className="ml-0.5 rounded p-0.5 text-slate-500 hover:bg-red-50 hover:text-red-600" aria-label={`Remove new HAWB ${i + 1}`}>
+                        <X size={12} />
+                      </button>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
             <div className="col-span-2 space-y-1.5">
               <Field label="Shipper Name & Address *">
                 <Select value={a.shipperId ?? ""} onChange={(e) => pickParty("shipper", e.target.value)} aria-label="Search shipper in the masters">
@@ -430,8 +625,11 @@ export function AwbFormModal({ job, existing, onClose, onSaved }: { job: Job; ex
             <Field label="Total (weight charge)">
               <Input value={`${a.currency} ${t.weight.toFixed(2)}`} readOnly disabled />
             </Field>
-            <Field label="Invoice Details" className="col-span-2 sm:col-span-3">
-              <Input value={a.invoiceDetails} onChange={str("invoiceDetails")} />
+            <Field label="Invoice Number">
+              <Input value={a.invoiceNo ?? ""} onChange={str("invoiceNo", true)} />
+            </Field>
+            <Field label="Invoice Date">
+              <Input type="date" value={a.invoiceDate ?? ""} onChange={str("invoiceDate")} />
             </Field>
             <Field label="Nature & quantity of goods (incl. dimensions or volume)" className="col-span-2">
               <Textarea rows={3} value={a.natureOfGoods} onChange={str("natureOfGoods", true)} />
@@ -546,7 +744,7 @@ const AWB_CONTRACT_CLAUSES = [
 function AwbCell({ label, children, className, valueClass }: { label?: React.ReactNode; children?: React.ReactNode; className?: string; valueClass?: string }) {
   return (
     <div className={cn("min-w-0 border-r border-b border-black px-1 py-0.5", className)}>
-      {label && <div className="text-[0.4375rem] leading-tight text-slate-700">{label}</div>}
+      {label && <div className="awb-caption text-[0.4375rem] leading-tight text-slate-700">{label}</div>}
       {children !== undefined && <div className={cn("text-[0.625rem] leading-snug font-semibold break-words", valueClass)}>{children}</div>}
     </div>
   );
@@ -556,7 +754,7 @@ function AwbCell({ label, children, className, valueClass }: { label?: React.Rea
 function AccountBox({ label, value, shaded }: { label: string; value?: string; shaded?: boolean }) {
   return (
     <span className={cn("float-right -mt-3 -mr-1 ml-2 block h-6 w-[7.5rem] border-b border-l border-black px-1 text-[0.4375rem] font-normal normal-case", shaded && "bg-slate-100")}>
-      {label}
+      <span className="awb-caption">{label}</span>
       {value && <span className="block text-[0.5625rem] font-semibold">{value}</span>}
     </span>
   );
@@ -566,7 +764,7 @@ function AccountBox({ label, value, shaded }: { label: string; value?: string; s
 function ChargeBand({ label, prepaid, collect, first }: { label: string; prepaid?: string; collect?: string; first?: boolean }) {
   return (
     <div className="col-span-2 border-r border-b border-black">
-      <div className="flex text-[0.4375rem] leading-tight">
+      <div className="awb-caption flex text-[0.4375rem] leading-tight">
         <span className={cn("flex-1 px-1", first && "font-bold")}>{first ? "Prepaid" : ""}</span>
         <span className="border-x border-black px-2">{label}</span>
         <span className={cn("flex-1 px-1 text-right", first && "font-bold")}>{first ? "Collect" : ""}</span>
@@ -583,7 +781,7 @@ function ChargeBand({ label, prepaid, collect, first }: { label: string; prepaid
  * Printable air waybill laid out like the IATA air waybill form. Master AWB: the airline's number in
  * both headings. House AWB: the MAWB on the left and the HAWB on the right (FRD VII.14–16).
  */
-export function AwbDocument({ awb }: { awb: Awb }) {
+export function AwbDocument({ awb, copy, withSign, dataOnly, rateMode = "normal" }: { awb: Awb } & AwbPrintOptions) {
   const { state } = useStore();
   const { job, airline, customer, portLabel } = useLookups();
   const j = job(awb.jobId);
@@ -597,7 +795,10 @@ export function AwbDocument({ awb }: { awb: Awb }) {
   const house = awb.type === "House";
   const sameAsConsignee = !awb.notifyParty.trim() || /^SAME AS CONSIGNEE$/i.test(awb.notifyParty.trim());
   // Prepaid / collect split for a charge band: weight & valuation follow WT/VAL, other charges follow Other
-  const split = (amount: number, prepaid: boolean): [string, string] => (amount ? (prepaid ? [f2(amount), ""] : ["", f2(amount)]) : ["", ""]);
+  // Amounts as printed: the figure, "AS AGREED", or nothing (No Rate)
+  const amt = (v: number) => (!v || rateMode === "norate" ? "" : rateMode === "agreed" ? "AS AGREED" : f2(v));
+  const split = (amount: number, prepaid: boolean): [string, string] => (amount ? (prepaid ? [amt(amount), ""] : ["", amt(amount)]) : ["", ""]);
+  const signature = withSign ? c.signatureImage : undefined;
   const issuerLogo = house ? c.logo : al?.logo;
   const [leg1, leg2, leg3] = awb.legs;
   const fd = (iso?: string) => (iso ? fmtDate(iso).toUpperCase() : "");
@@ -611,12 +812,12 @@ export function AwbDocument({ awb }: { awb: Awb }) {
   );
 
   return (
-    <div className="doc-sheet overflow-x-auto">
+    <div className={cn("doc-sheet overflow-x-auto", dataOnly && "awb-data-only")}>
       <div className="mx-auto w-[48rem] bg-white font-sans text-black">
         {/* Header numbers */}
         <div className="mb-0.5 flex items-end justify-between">
           <div className="flex items-center gap-1.5">
-            <span className="text-[0.5625rem] font-bold">MAWB No.:</span>
+            <span className="awb-caption text-[0.5625rem] font-bold">MAWB No.:</span>
             {numberBox}
           </div>
           <span className="text-[0.5625rem] font-semibold text-slate-500">{awb.status !== "AWB Executed" ? `${awb.status.toUpperCase()} · NOT FOR CARRIAGE` : ""}</span>
@@ -632,7 +833,7 @@ export function AwbDocument({ awb }: { awb: Awb }) {
               <AccountBox label="Shipper's Account Number" value={awb.shipperAccount} />
               {awb.shipper}
             </AwbCell>
-            <AwbCell className="flex flex-col">
+            <AwbCell className="awb-static flex flex-col">
               <div className="text-[0.4375rem]">Not negotiable</div>
               <div className="flex items-start gap-2">
                 <div className="flex-1">
@@ -653,7 +854,7 @@ export function AwbDocument({ awb }: { awb: Awb }) {
               {awb.consignee}
             </AwbCell>
             <AwbCell>
-              <p className="text-justify text-[0.40625rem] leading-[1.25] font-normal">{AWB_CONDITIONS}</p>
+              <p className="awb-static text-justify text-[0.40625rem] leading-[1.25] font-normal">{AWB_CONDITIONS}</p>
             </AwbCell>
 
             {/* A House AWB names the notify party here (as on the template); a Master AWB names the issuing carrier's agent */}
@@ -665,7 +866,12 @@ export function AwbDocument({ awb }: { awb: Awb }) {
               <AwbCell label="Issuing Carrier's Agent Name and City">{[awb.localAgent, awb.place].filter(Boolean).join(", ")}</AwbCell>
             )}
             <AwbCell label="Accounting Information" className="row-span-2" valueClass="whitespace-pre-line">
-              {[awb.freightTermDetails, awb.invoiceDetails && `INV: ${awb.invoiceDetails}`].filter(Boolean).join("\n")}
+              {[
+                awb.freightTermDetails,
+                awb.invoiceNo ? `INV NO: ${awb.invoiceNo}${awb.invoiceDate ? ` DT: ${fd(awb.invoiceDate)}` : ""}` : awb.invoiceDetails && `INV: ${awb.invoiceDetails}`,
+              ]
+                .filter(Boolean)
+                .join("\n")}
             </AwbCell>
             <div className="grid grid-cols-2">
               <AwbCell label="Agent's IATA Code">{awb.agentIataCode}</AwbCell>
@@ -695,19 +901,19 @@ export function AwbDocument({ awb }: { awb: Awb }) {
               <AwbCell label="Currency">{awb.currency}</AwbCell>
               <AwbCell label="CHGS Code">{awb.chgsCode}</AwbCell>
               <div className="border-r border-b border-black text-[0.4375rem]">
-                <div className="border-b border-black text-center">WT/VAL</div>
+                <div className="awb-caption border-b border-black text-center">WT/VAL</div>
                 <div className="grid grid-cols-2 text-center">
-                  <span className="border-r border-black">PPD</span>
-                  <span>COLL</span>
+                  <span className="awb-caption border-r border-black">PPD</span>
+                  <span className="awb-caption">COLL</span>
                   <b className="border-r border-black text-[0.625rem]">{wtPrepaid ? "X" : ""}</b>
                   <b className="text-[0.625rem]">{wtPrepaid ? "" : "X"}</b>
                 </div>
               </div>
               <div className="border-r border-b border-black text-[0.4375rem]">
-                <div className="border-b border-black text-center">Other</div>
+                <div className="awb-caption border-b border-black text-center">Other</div>
                 <div className="grid grid-cols-2 text-center">
-                  <span className="border-r border-black">PPD</span>
-                  <span>COLL</span>
+                  <span className="awb-caption border-r border-black">PPD</span>
+                  <span className="awb-caption">COLL</span>
                   <b className="border-r border-black text-[0.625rem]">{otherPrepaid ? "X" : ""}</b>
                   <b className="text-[0.625rem]">{otherPrepaid ? "" : "X"}</b>
                 </div>
@@ -726,7 +932,7 @@ export function AwbDocument({ awb }: { awb: Awb }) {
             <div className="grid grid-cols-[6rem_1fr]">
               <AwbCell label="Amount of Insurance">{awb.insurance > 0 ? f2(awb.insurance) : "NIL"}</AwbCell>
               <AwbCell>
-                <p className="text-[0.375rem] leading-tight font-normal">
+                <p className="awb-static text-[0.375rem] leading-tight font-normal">
                   INSURANCE – If carrier offers insurance, and such insurance is requested in accordance with the conditions thereof, indicate amount to be insured in figures in box marked
                   &quot;Amount of Insurance&quot;.
                 </p>
@@ -746,7 +952,7 @@ export function AwbDocument({ awb }: { awb: Awb }) {
           {/* Cargo */}
           <div className="grid grid-cols-[3rem_4.2rem_1.3rem_1.3rem_3.6rem_4.2rem_4.6rem_5.6rem_1fr] text-center text-[0.4375rem] leading-tight">
             {["No. of Pieces RCP", "Gross Weight", "kg lb", "", "Rate Class Commodity Item No.", "Chargeable Weight", "Rate / Charge", "Total", ""].map((h, i) => (
-              <div key={i} className="border-r border-b border-black px-0.5 py-0.5">
+              <div key={i} className="awb-caption border-r border-b border-black px-0.5 py-0.5">
                 {h}
                 {i === 8 && <span className="text-[0.5625rem]">Nature and Quantity of Goods (incl. Dimensions or Volume)</span>}
               </div>
@@ -758,8 +964,8 @@ export function AwbDocument({ awb }: { awb: Awb }) {
               awb.rateClass,
               awb.commodityItemNo,
               awb.chargeableWeight ? f2(awb.chargeableWeight) : "",
-              awb.rate ? f2(awb.rate) : "",
-              weightCharge ? f2(weightCharge) : "",
+              amt(awb.rate),
+              amt(weightCharge),
             ].map((v, i) => (
               <div key={i} className="h-44 border-r border-b border-black px-1 py-1 text-right text-[0.625rem] font-semibold tabular-nums">
                 {v}
@@ -774,7 +980,7 @@ export function AwbDocument({ awb }: { awb: Awb }) {
             <div className="border-r border-b border-black px-1 text-right text-[0.625rem] font-bold tabular-nums">{awb.pieces || ""}</div>
             <div className="border-r border-b border-black px-1 text-right text-[0.625rem] font-bold tabular-nums">{awb.grossWeight ? f2(awb.grossWeight) : ""}</div>
             <div className="col-span-5 border-r border-b border-black" />
-            <div className="border-r border-b border-black px-1 text-right text-[0.625rem] font-bold tabular-nums">{weightCharge ? f2(weightCharge) : ""}</div>
+            <div className="border-r border-b border-black px-1 text-right text-[0.625rem] font-bold tabular-nums">{amt(weightCharge)}</div>
             <div className="border-r border-b border-black" />
           </div>
 
@@ -787,7 +993,8 @@ export function AwbDocument({ awb }: { awb: Awb }) {
                   .filter((x) => x.amount)
                   .map((x) => (
                     <span key={x.id}>
-                      {x.code}: {f2(x.amount)}
+                      {x.code}
+                      {rateMode !== "norate" && `: ${amt(x.amount)}`}
                     </span>
                   ))}
               </div>
@@ -796,28 +1003,30 @@ export function AwbDocument({ awb }: { awb: Awb }) {
             <ChargeBand label="Tax" prepaid={split(awb.tax, wtPrepaid)[0]} collect={split(awb.tax, wtPrepaid)[1]} />
             <ChargeBand label="Total Other Charges Due Agent" prepaid={split(t.dueAgent, otherPrepaid)[0]} collect={split(t.dueAgent, otherPrepaid)[1]} />
             <AwbCell className="row-span-3 flex flex-col justify-between">
-              <p className="text-[0.4375rem] leading-tight font-normal">
+              <p className="awb-static text-[0.4375rem] leading-tight font-normal">
                 Shipper certifies that the particulars on the face hereof are correct and that insofar as any part of the consignment contains dangerous goods, such part is properly described
                 by name and is in proper condition for carriage by air according to the applicable Dangerous Goods Regulations.
               </p>
               <div className="mt-2 text-center">
                 <div className="text-[0.625rem] font-semibold">{awb.agentSign || " "}</div>
-                <div className="border-t border-dotted border-black text-[0.4375rem] font-normal">Signature of Shipper or his Agent</div>
+                <div className="awb-caption border-t border-dotted border-black text-[0.4375rem] font-normal">Signature of Shipper or his Agent</div>
               </div>
             </AwbCell>
             <ChargeBand label="Total Other Charges Due Carrier" prepaid={split(t.dueCarrier, otherPrepaid)[0]} collect={split(t.dueCarrier, otherPrepaid)[1]} />
             <div className="col-span-2 h-5 border-r border-b border-black bg-slate-100" />
             <div className="col-span-2 grid grid-cols-2">
-              <AwbCell label="Total Prepaid" valueClass="text-right tabular-nums">{t.prepaid ? f2(t.prepaid) : " "}</AwbCell>
-              <AwbCell label="Total Collect" valueClass="text-right tabular-nums">{t.collect ? f2(t.collect) : " "}</AwbCell>
+              <AwbCell label="Total Prepaid" valueClass="text-right tabular-nums">{amt(t.prepaid) || " "}</AwbCell>
+              <AwbCell label="Total Collect" valueClass="text-right tabular-nums">{amt(t.collect) || " "}</AwbCell>
             </div>
             <AwbCell className="row-span-2 flex flex-col justify-end">
+              {/* "With Sign": the company's authorised signature (Company Set up) above the signature line */}
+              {signature && <img src={signature} alt="Authorised signature" className="mb-0.5 ml-auto max-h-9 max-w-36 object-contain" />}
               <div className="grid grid-cols-3 items-end gap-2 text-[0.625rem] font-semibold">
                 <span>{fd(awb.issuedAt)}</span>
                 <span className="text-center">{awb.place}</span>
                 <span className="text-right">{awb.carrierSign}</span>
               </div>
-              <div className="grid grid-cols-3 gap-2 border-t border-dotted border-black text-[0.4375rem] font-normal">
+              <div className="awb-caption grid grid-cols-3 gap-2 border-t border-dotted border-black text-[0.4375rem] font-normal">
                 <span>Executed on (date)</span>
                 <span className="text-center">at (place)</span>
                 <span className="text-right">Signature of Issuing Carrier or its Agent</span>
@@ -828,31 +1037,79 @@ export function AwbDocument({ awb }: { awb: Awb }) {
                 {awb.conversionRate ? `${awb.conversionRate} ${awb.destCurrency}` : ""}
               </AwbCell>
               <AwbCell label="CC Charges in Dest. Currency" className="h-8" valueClass="text-right tabular-nums">
-                {t.ccDest ? f2(t.ccDest) : ""}
+                {amt(t.ccDest)}
               </AwbCell>
             </div>
             <AwbCell label="For Carrier's Use only at Destination" className="h-8 text-center" />
             <AwbCell label="Charges at Destination" className="h-8" valueClass="text-right tabular-nums">
-              {awb.chargesAtDestination ? f2(awb.chargesAtDestination) : ""}
+              {amt(awb.chargesAtDestination)}
             </AwbCell>
             <div className="grid grid-cols-[9.5rem_1fr]">
               <AwbCell label="Total Collect Charges" className="h-8" valueClass="text-right tabular-nums">
-                {t.totalCollect ? f2(t.totalCollect) : ""}
+                {amt(t.totalCollect)}
               </AwbCell>
               <div />
             </div>
           </div>
         </div>
+        {/* Copy type, e.g. "Original 1 - (For Issuing Carrier)" */}
+        {copy && <div className="mt-1.5 text-center text-[0.8125rem] font-bold">{copy}</div>}
       </div>
     </div>
   );
 }
 
-/** Print preview with Send (to the customer for confirmation) and Print */
-export function AwbPreviewModal({ awb, onClose, onBack, onEdit, unsaved }: { awb: Awb; onClose: () => void; onBack?: () => void; onEdit?: () => void; unsaved?: boolean }) {
+/** Several House AWBs on a job: pick which one to open (HAWB No | Shipper | Consignee) */
+export function AwbPicker({ awbs, onPick, onClose, title = "Select an AWB to preview" }: { awbs: Awb[]; onPick: (index: number) => void; onClose: () => void; title?: string }) {
+  return (
+    <Modal open onClose={onClose} title={title} wide>
+      <div className="overflow-hidden rounded-lg ring-1 ring-slate-200">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 text-xs text-slate-500">
+            <tr>
+              <th className="px-3 py-2 font-medium">HAWB No</th>
+              <th className="px-3 py-2 font-medium">Shipper Name</th>
+              <th className="px-3 py-2 font-medium">Consignee</th>
+              <th className="px-3 py-2 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {awbs.map((x, i) => (
+              <tr key={x.id} className="border-t border-slate-100">
+                <td className="px-3 py-1.5">
+                  <button type="button" onClick={() => onPick(i)} className="rounded font-mono font-semibold text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500">
+                    {awbLabel(x)}
+                  </button>
+                </td>
+                <td className="max-w-56 truncate px-3 py-1.5">{x.shipper.split("\n")[0] || <span className="text-slate-500">Not filled yet</span>}</td>
+                <td className="max-w-56 truncate px-3 py-1.5">{x.consignee.split("\n")[0] || <span className="text-slate-500">Not filled yet</span>}</td>
+                <td className="px-3 py-1.5">
+                  <Badge className={AWB_TONE[x.status]}>{x.status}</Badge>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Print preview with Send (to the customer for confirmation) and Print. Quick print options in the footer
+ * (copy type, With Sign, stationery and rates) show live here and carry into the print dialog.
+ */
+export function AwbPreviewModal({ awb, siblings, onClose, onBack, onEdit, unsaved }: { awb: Awb; siblings?: Awb[]; onClose: () => void; onBack?: () => void; onEdit?: () => void; unsaved?: boolean }) {
+  const { state } = useStore();
   const [sending, setSending] = useState(false);
-  const [reverse, setReverse] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [choice, setChoice] = useState<PrintChoice>(DEFAULT_PRINT);
+  const hasSignature = !!state.settings.company.signatureImage;
+  // The previewed AWB is always printable, even when it is missing from the job's list (cancelled)
+  const printable = siblings?.some((x) => x.id === awb.id) ? siblings : [...(siblings ?? []), awb];
   if (sending) return <SendAwbFlow awb={awb} onClose={() => setSending(false)} />;
+  if (printing) return <AwbPrintDialog awbs={printable} initialAwbId={awb.id} initial={choice} onClose={() => setPrinting(false)} />;
+  const quick = "h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-800";
   return (
     <Modal
       open
@@ -862,6 +1119,37 @@ export function AwbPreviewModal({ awb, onClose, onBack, onEdit, unsaved }: { awb
       footer={
         <div className="flex w-full flex-wrap items-center justify-between gap-2">
           <Badge className={AWB_TONE[awb.status]}>{awb.status}</Badge>
+          {/* Quick print options: the preview follows them, and Print starts from them */}
+          <div className="no-print flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <select aria-label="Copy type" className={quick} value={choice.copies[0] ?? ""} onChange={(e) => setChoice({ ...choice, copies: [e.target.value as AwbCopy] })}>
+              {AWB_COPIES.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+            <select
+              aria-label="Stationery and rates"
+              className={quick}
+              value={`${choice.stationery}:${choice.rateMode}`}
+              onChange={(e) => {
+                const [stationery, rateMode] = e.target.value.split(":") as [Stationery, RateMode];
+                setChoice({ ...choice, stationery, rateMode });
+              }}
+            >
+              {(["without", "with"] as const).map((st) => (
+                <optgroup key={st} label={st === "with" ? "With Stationary (data only)" : "Without Stationary (full form)"}>
+                  {RATE_MODES.map((m) => (
+                    <option key={m.id} value={`${st}:${m.id}`}>
+                      {st === "with" ? "With" : "Without"} · {m.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <label className={cn("flex items-center gap-1.5 text-xs", hasSignature ? "text-slate-700" : "text-slate-500")} title={hasSignature ? undefined : "Upload the signature in Company Set up first"}>
+              <input type="checkbox" className="accent-brand-600" disabled={!hasSignature} checked={choice.withSign} onChange={(e) => setChoice({ ...choice, withSign: e.target.checked })} />
+              With Sign
+            </label>
+          </div>
           <div className="flex flex-wrap gap-2">
             {onBack && (
               <Button variant="secondary" onClick={onBack}>
@@ -873,7 +1161,8 @@ export function AwbPreviewModal({ awb, onClose, onBack, onEdit, unsaved }: { awb
                 Edit
               </Button>
             )}
-            <Button variant="secondary" onClick={() => window.print()}>
+            {/* Unsaved "Own" numbers are only provisional, so printing waits for the save */}
+            <Button variant="secondary" onClick={() => setPrinting(true)} disabled={unsaved} title={unsaved ? "Save the AWB first" : undefined}>
               <Printer size={14} aria-hidden /> Print
             </Button>
             <Button onClick={() => setSending(true)} disabled={unsaved || awb.status === "Cancelled"} title={unsaved ? "Save the AWB first" : undefined}>
@@ -884,11 +1173,11 @@ export function AwbPreviewModal({ awb, onClose, onBack, onEdit, unsaved }: { awb
       }
     >
       <label className="no-print mb-3 flex items-center gap-2 text-sm text-slate-600">
-        <input type="checkbox" className="accent-brand-600" checked={reverse} onChange={(e) => setReverse(e.target.checked)} />
+        <input type="checkbox" className="accent-brand-600" checked={choice.reverse} onChange={(e) => setChoice({ ...choice, reverse: e.target.checked })} />
         Include the reverse side (notice of liability and conditions of contract) when printing
       </label>
-      <AwbDocument awb={awb} />
-      {reverse && <AwbReverse />}
+      <AwbDocument awb={awb} copy={choice.copies[0]} withSign={choice.withSign && hasSignature} dataOnly={choice.stationery === "with"} rateMode={choice.rateMode} />
+      {choice.reverse && <AwbReverse />}
     </Modal>
   );
 }

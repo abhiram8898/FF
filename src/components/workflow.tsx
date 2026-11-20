@@ -6,7 +6,7 @@ import { useState } from "react";
 import { AlertCircle, Check, CheckCircle2, History, Plane, Plus, Trash2, XCircle } from "lucide-react";
 import { type RateInput, useLookups, useStore } from "@/lib/store";
 import { ENQUIRY_STATUSES, type AirlineRate, type Enquiry, type EnquiryStatus, type MailDraft } from "@/lib/types";
-import { STEPS, addDays, airlinesForRoute, cn, currentStep, estimatedTotal, fmtDate, money, previousShipments, rateForWeight, ratesForRoute, today, uid, volumeCbm } from "@/lib/utils";
+import { STEPS, addDays, airlinesForRoute, cn, currentStep, estimatedTotal, fmtDate, money, previousShipments, rateForWeight, ratesForRoute, today, uid, volumeCbm, airlineEmailFor } from "@/lib/utils";
 import { ComposeEmail } from "./ComposeEmail";
 import { Badge, Button, Empty, Field, Fog, Input, KeyValue, Modal, Select, StatusBadge, Table } from "./ui";
 
@@ -607,7 +607,7 @@ function PerAirlineMail({
     <ComposeEmail
       key={airline.id}
       title={airlineIds.length > 1 ? `${kind} ${index + 1} of ${airlineIds.length} · ${airline.name}` : `${kind} · ${airline.name}`}
-      initial={{ to: [airline.email], ...rateRequestMail(enq, airline.name, customer(enq.customerId)?.name ?? "", portLabel(enq.pol), portLabel(enq.pod), reminder) }}
+      initial={{ to: [airlineEmailFor(airline, enq.branch)], ...rateRequestMail(enq, airline.name, customer(enq.customerId)?.name ?? "", portLabel(enq.pol), portLabel(enq.pod), reminder) }}
       note={
         airlineIds.length > 1 && (
           <p className="text-xs text-slate-500">
@@ -682,7 +682,7 @@ export function ForwardFlow({ enq, direct, onClose }: { enq: Enquiry; /** Skip t
             <label key={a.id} className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 p-3 text-sm hover:bg-slate-50">
               <input type="checkbox" checked={selected.includes(a.id)} onChange={() => toggle(a.id)} className="mt-0.5 accent-brand-600" />
               <span>
-                <span className="font-medium">{a.name}</span> <span className="text-xs text-slate-500">{a.email}</span>
+                <span className="font-medium">{a.name}</span> <span className="text-xs text-slate-500">{airlineEmailFor(a, enq.branch)}</span>
                 {alreadySent.includes(a.id) && <span className="block text-xs text-amber-600">Already requested</span>}
               </span>
             </label>

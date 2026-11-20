@@ -679,6 +679,51 @@ body {
   background-color: var(--color-slate-100);
 }
 
+/*
+ * AWB "With Stationary": prints only the data, for airlines' pre-printed AWB forms. Captions, legal text,
+ * lines and shading keep their space (so every value lands in its box) but don't print.
+ */
+.awb-data-only .awb-caption,
+.awb-data-only .awb-static {
+  visibility: hidden;
+}
+.awb-data-only,
+.awb-data-only * {
+  border-color: transparent !important;
+}
+.awb-data-only .bg-slate-100 {
+  background-color: transparent !important;
+}
+
+/*
+ * AWB print dialog: the chosen copies are rendered off-screen (for PDF / Word / PNG) and, when printing,
+ * become the only thing on the page, one copy per sheet.
+ */
+/* AWB pages are paper: white in dark mode too */
+.awb-print-page {
+  background: #fff;
+}
+@media screen {
+  .awb-print-root {
+    position: fixed;
+    top: 0;
+    left: -20000px;
+    width: 50rem;
+    pointer-events: none;
+  }
+}
+@media print {
+  body:has(.awb-print-root.is-printing) > :not(.awb-print-root) {
+    display: none !important;
+  }
+  .awb-print-root:not(.is-printing) {
+    display: none !important;
+  }
+  .awb-print-page + .awb-print-page {
+    break-before: page;
+  }
+}
+
 /* Visible keyboard focus for links and controls that don't style their own */
 a:focus-visible,
 input[type="checkbox"]:focus-visible {

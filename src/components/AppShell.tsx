@@ -9,6 +9,7 @@ import {
   Bell,
   BookUser,
   Building2,
+  CalendarDays,
   CalendarRange,
   ChevronDown,
   Coins,
@@ -29,11 +30,11 @@ import {
   Plane,
   Plus,
   ReceiptText,
-  RotateCcw,
   Send,
   SlidersHorizontal,
   Sun,
   UsersRound,
+  Wallet,
   X,
 } from "lucide-react";
 import { useAuth, type User } from "@/lib/auth";
@@ -127,7 +128,7 @@ const within = (pathname: string, href: string) =>
 
 function Shell({ user, children }: { user: User; children: React.ReactNode }) {
   const pathname = usePathname();
-  const { state, actions } = useStore();
+  const { state } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const unread = state.inbox.filter((m) => !m.read).length;
 
@@ -176,8 +177,10 @@ function Shell({ user, children }: { user: User; children: React.ReactNode }) {
           label: "Reserved Shipments",
           icon: CalendarRange,
         },
+        { href: "/planned-shipments", label: "Planned Shipments", icon: CalendarDays },
         { href: "/enquiries", label: "Jobs", icon: Package },
         { href: "/awbs", label: "Airway Bills", icon: Plane },
+        { href: "/billing", label: "Billing", icon: Wallet },
         { href: "/documents", label: "Documents", icon: FileStack },
         { href: "/invoices", label: "Customer Invoice", icon: FileSpreadsheet },
       ],
@@ -259,6 +262,8 @@ function Shell({ user, children }: { user: User; children: React.ReactNode }) {
       );
     return within(pathname, path);
   };
+  // Two menu items can share a link (Billing and Debit Note are both /billing): only the first one lights up
+  const activeLabel = groups.flatMap((g) => g.items).find((it) => isActive(it.href))?.label;
   const isTabActive = (t: (typeof TABS)[number]) =>
     [t.href, ...t.match].some((h) => within(pathname, h));
 
@@ -281,10 +286,10 @@ function Shell({ user, children }: { user: User; children: React.ReactNode }) {
                   <Link
                     href={href}
                     prefetch
-                    aria-current={isActive(href) ? "page" : undefined}
+                    aria-current={label === activeLabel ? "page" : undefined}
                     className={cn(
                       "relative flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[0.875rem] transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white",
-                      isActive(href)
+                      label === activeLabel
                         ? "bg-white/15 font-medium text-white"
                         : "text-brand-100 hover:bg-white/10 hover:text-white",
                     )}

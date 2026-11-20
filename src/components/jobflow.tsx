@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowDown, ArrowUp, BellRing, Download, FileCheck2, Merge, Send } from "lucide-react";
 import { useLookups, useStore } from "@/lib/store";
 import { JOB_FINAL_STATUSES, type Awb, type CustomerInvoice, type Job, type MailDraft, type MergedDocs, type StoredDoc } from "@/lib/types";
 import { MAX_KEPT_FILE, fmtDate, fmtDateTime, fmtSize, readFileAsDataUrl } from "@/lib/utils";
 import { ComposeEmail } from "./ComposeEmail";
-import { AwbFormModal, AwbPreviewModal, AwbStatusModal, awbLabel } from "./awb";
+import { AwbFormModal, AwbPicker, AwbPreviewModal, AwbStatusModal, awbLabel } from "./awb";
 import { invoiceTotals } from "./invoice";
 import { DocumentsInput } from "./inputs";
 import { Button, Fog, LinkButton, Modal } from "./ui";
@@ -15,7 +16,7 @@ import { Button, Fog, LinkButton, Modal } from "./ui";
 /** Line status shown on the Documents screen */
 export function docsLineStatus(job: Job) {
   if (job.dispatchedAt) return "Booking Completed";
-  if (job.merged) return "CHA Dispatch Pending";
+  if (job.merged) return "Pre-alert Pending";
   if (job.uploadCompletedAt) return "Uploading Completed";
   return "Pending Documents";
 }
@@ -209,11 +210,12 @@ async function mergeToPdf(items: MergeItem[], heading: string) {
 /** "Merge Documents": pick the documents and their order; they become one PDF on the job */
 export function MergeModal({ job, onClose, onDispatch }: { job: Job; onClose: () => void; onDispatch: () => void }) {
   const { state, actions } = useStore();
-  const { awbOf } = useLookups();
-  const awb = awbOf(job.id);
+  const { awbsOf } = useLookups();
+  // Every House AWB under the MAWB goes in the set (executed ones; drafts aren't final)
+  const awbs = awbsOf(job.id).filter((a) => a.status === "AWB Executed");
   const invoices = state.invoices.filter((i) => i.jobId === job.id && (i.status === "Generated" || i.status === "Completed"));
   const all: MergeItem[] = [
-    ...(awb ? [{ key: "awb", title: "AWB", detail: `${awbLabel(awb)} · made in the application`, awb }] : []),
+    ...awbs.map((awb, i) => ({ key: i === 0 ? "awb" : `awb:${awb.id}`, title: awbs.length > 1 ? `AWB ${i + 1}` : "AWB", detail: `${awbLabel(awb)} · made in the application`, awb })),
     ...invoices.map((i) => ({ key: `invoice:${i.id}`, title: "Invoice", detail: `${i.no} · from Customer Invoice`, invoice: i })),
     ...job.documents.map((d) => ({ key: d.id, title: d.title, detail: `${d.fileName} · ${fmtSize(d.size)}${d.dataUrl ? "" : " · not kept, will be skipped"}`, doc: d })),
   ];
@@ -294,7 +296,7 @@ export function MergeModal({ job, onClose, onDispatch }: { job: Job; onClose: ()
                 onDispatch();
               }}
             >
-              <Send size={14} aria-hidden /> Dispatch To CHA
+              <Send size={14} aria-hidden /> Send Pre-alert to Shipper
             </Button>
           </>
         ) : (
@@ -312,7 +314,7 @@ export function MergeModal({ job, onClose, onDispatch }: { job: Job; onClose: ()
       {result ? (
         <div className="space-y-3 text-sm">
           <p className="rounded-lg bg-emerald-50 p-3 text-emerald-800">
-            Merged into <b>{fileName}</b>. Next action: <b>Dispatch To CHA</b>.
+            Merged into <b>{fileName}</b>. Next action: <b>Send Pre-alert to Shipper</b>.
           </p>
           {result.attached.length > 0 && (
             <p className="rounded-lg bg-brand-50 p-3 text-brand-800">
@@ -352,30 +354,32 @@ export function MergeModal({ job, onClose, onDispatch }: { job: Job; onClose: ()
   );
 }
 
-/** "Dispatch To CHA": mail to the CHA chosen on the job, with the merged documents */
+/** "Send Pre-alert to Shipper": mail to the job's shipper (stakeholder master), with the merged documents */
 export function DispatchChaFlow({ job, onClose }: { job: Job; onClose: () => void }) {
   const { state, actions } = useStore();
-  const { customer, portLabel, awbOf } = useLookups();
-  const awb = awbOf(job.id);
-  const cha = customer(job.chaId);
-  const email = cha?.email || job.chaEmail;
+  const { customer, portLabel, awbsOf } = useLookups();
+  const awbs = awbsOf(job.id);
+  const shipper = customer(job.shipperId);
+  // The job's shipper, plus the shipper picked on each House AWB (several HAWBs can have different shippers)
+  const shippers = [shipper, ...awbs.map((a) => customer(a.shipperId))].filter((c): c is NonNullable<typeof c> => !!c);
+  const emails = [...new Set(shippers.flatMap((c) => [c.email, ...c.altEmails]).filter(Boolean))];
+  const awbText = awbs.length ? awbs.map(awbLabel).join(", ") : job.awbNo;
   return (
     <ComposeEmail
-      title={`Dispatch To CHA · ${job.chaName || "CHA"}`}
-      note={!email && <Fog>No CHA email on this job. Pick the CHA on the job (Charges & billing) or type the address below.</Fog>}
+      title={`Send Pre-alert to Shipper · ${shipper?.name || job.shipperName || "Shipper"}`}
+      note={!emails.length && <Fog>No email for the shipper{job.shipperName ? ` (${job.shipperName})` : ""}. Pick the shipper from the stakeholder master on the job, or type the address below.</Fog>}
       initial={{
-        to: email ? [email] : [],
+        to: emails,
         cc: state.settings.company.email,
-        subject: `Shipment documents – ${job.ref}${awb ? ` / ${awbLabel(awb)}` : ""}`,
+        subject: `Pre-alert – ${job.ref}${awbs[0] ? ` / ${awbs[0].mawbNo ? `MAWB ${awbs[0].mawbNo}` : awbLabel(awbs[0])}` : ""}`,
         body: [
-          `Dear ${cha?.contact || job.chaName || "Sir / Madam"},`,
+          `Dear ${shipper?.contact || shipper?.name || job.shipperName || "Sir / Madam"},`,
           "",
-          "Please find attached the merged shipment documents for customs clearance.",
+          "Please find below the pre-alert for your shipment, with the merged shipment documents attached.",
           "",
           `Job No: ${job.ref}`,
-          `Customer: ${customer(job.customerId)?.name ?? ""}`,
-          `Shipper: ${job.shipperName}`,
-          `AWB: ${awb ? awbLabel(awb) : job.awbNo}`,
+          `Shipper: ${shipper?.name || job.shipperName}`,
+          `AWB: ${awbText}`,
           `Route: ${portLabel(job.pol)} → ${portLabel(job.pod)}`,
           `Flight: ${job.flightNo} · ${fmtDate(job.flightDate)}`,
           `Packages / Weight: ${job.boxes} / ${job.weight} kg`,
@@ -423,16 +427,42 @@ export function NotifyCustomerFlow({
   );
 }
 
-type JobDialog = "awb" | "editAwb" | "previewAwb" | "awbStatus" | "upload" | "merge" | "dispatch" | "notify" | null;
+type JobDialog = "awb" | "editAwb" | "previewAwb" | "pickAwb" | "awbStatus" | "upload" | "merge" | "dispatch" | "notify" | null;
 
 /** The job's "Next action" from job creation to departure (FRD VI.10 → VIII.19) */
 export function JobNextAction({ job, initial }: { job: Job; initial?: JobDialog }) {
+  const router = useRouter();
   const { state, actions } = useStore();
-  const { awbOf, portLabel } = useLookups();
+  const { awbsOf, portLabel } = useLookups();
   const [dialog, setDialog] = useState<JobDialog>(initial ?? null);
-  const awb = awbOf(job.id);
+  const awbs = awbsOf(job.id);
+  const awb = awbs[0];
+  const [previewId, setPreviewId] = useState<string | undefined>();
+  const previewed = awbs.find((a) => a.id === previewId) ?? awb;
   const proforma = state.bills.find((b) => b.jobId === job.id && b.kind === "Proforma" && b.status !== "Cancelled");
   const close = () => setDialog(null);
+  // "AWB Executed" covers every House AWB on the job: all are checked first, and none is executed while one is incomplete
+  const executeAll = () => actions.executeAwbs(job.id);
+  const notExecuted = awbs.filter((a) => a.status !== "AWB Executed");
+  const counts = Object.entries(awbs.reduce<Record<string, number>>((m, a) => ({ ...m, [a.status]: (m[a.status] ?? 0) + 1 }), {}))
+    .map(([st, n]) => `${n} ${st}`)
+    .join(", ");
+  const openProforma = proforma ? (
+    <LinkButton size="sm" variant="secondary" href={`/billing/${proforma.id}`}>
+      Open Proforma
+    </LinkButton>
+  ) : (
+    <Button
+      size="sm"
+      variant="secondary"
+      onClick={() => {
+        const p = actions.createProforma(job.id);
+        if (p) router.push(`/billing/${p.id}`);
+      }}
+    >
+      Open Proforma
+    </Button>
+  );
 
   const row = (text: React.ReactNode, action: React.ReactNode) => (
     <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-700">
@@ -456,18 +486,24 @@ export function JobNextAction({ job, initial }: { job: Job; initial?: JobDialog 
     case "AWB In Progress":
       body = awb
         ? row(
-            <>
-              AWB <b className="font-mono">{awbLabel(awb)}</b> is <b>{awb.status}</b>.{" "}
-              {awb.status === "Draft" ? "Preview and send it to the customer for confirmation." : "Once the customer confirms (and any corrections are made), mark it executed."}
-            </>,
+            awbs.length > 1 ? (
+              <>
+                <b>{awbs.length} House AWBs</b> under MAWB <b className="font-mono">{awb.mawbNo || "—"}</b> ({counts}). Preview and send each for confirmation, then mark them executed.
+              </>
+            ) : (
+              <>
+                AWB <b className="font-mono">{awbLabel(awb)}</b> is <b>{awb.status}</b>.{" "}
+                {awb.status === "Draft" ? "Preview and send it to the customer for confirmation." : "Once the customer confirms (and any corrections are made), mark it executed."}
+              </>
+            ),
             <>
               <Button size="sm" variant="secondary" onClick={() => setDialog("editAwb")}>
                 Edit AWB
               </Button>
-              <Button size="sm" variant="secondary" onClick={() => setDialog("previewAwb")}>
+              <Button size="sm" variant="secondary" onClick={() => (awbs.length > 1 ? setDialog("pickAwb") : (setPreviewId(awb.id), setDialog("previewAwb")))}>
                 Preview / Send
               </Button>
-              <Button size="sm" onClick={() => actions.setAwbStatus(awb.id, "AWB Executed")}>
+              <Button size="sm" onClick={executeAll}>
                 AWB Executed
               </Button>
             </>,
@@ -483,14 +519,32 @@ export function JobNextAction({ job, initial }: { job: Job; initial?: JobDialog 
       body = row(
         <>
           AWB executed. Next action: <b>Manage Documents</b>. Upload the documents, then mark uploading completed.
+          {notExecuted.length > 0 && (
+            <span className="mt-1 block text-amber-700">
+              Not executed yet: {notExecuted.map((a) => `${awbLabel(a)} (${a.status})`).join(", ")}. They are left out of the merged documents until executed.
+            </span>
+          )}
         </>,
-        <Button onClick={() => setDialog("upload")}>Manage Documents</Button>,
+        <>
+          {notExecuted.length > 0 && (
+            <>
+              <Button size="sm" variant="secondary" onClick={() => setDialog("editAwb")}>
+                Edit AWB
+              </Button>
+              <Button size="sm" variant="secondary" onClick={executeAll}>
+                Execute remaining
+              </Button>
+            </>
+          )}
+          {openProforma}
+          <Button onClick={() => setDialog("upload")}>Manage Documents</Button>
+        </>,
       );
       break;
     case "Documents Uploaded":
       body = row(
         <>
-          Uploading completed ({job.documents.length} document{job.documents.length !== 1 && "s"}). Next action: <b>Merge Documents</b> and forward to the CHA.
+          Uploading completed ({job.documents.length} document{job.documents.length !== 1 && "s"}). Next action: <b>Merge Documents</b> and send the pre-alert to the shipper.
         </>,
         <>
           <Button size="sm" variant="secondary" onClick={() => setDialog("upload")}>
@@ -500,16 +554,16 @@ export function JobNextAction({ job, initial }: { job: Job; initial?: JobDialog 
         </>,
       );
       break;
-    case "CHA Dispatch Pending":
+    case "Pre-alert Pending":
       body = row(
         <>
-          Documents merged into <b>{job.merged?.fileName}</b>. Next action: <b>Dispatch To CHA</b> ({job.chaName || "no CHA chosen yet"}).
+          Documents merged into <b>{job.merged?.fileName}</b>. Next action: <b>Send Pre-alert to Shipper</b> ({job.shipperName || "no shipper on the job yet"}).
         </>,
         <>
           <Button size="sm" variant="secondary" onClick={() => setDialog("merge")}>
             Merge again
           </Button>
-          <Button onClick={() => setDialog("dispatch")}>Dispatch To CHA</Button>
+          <Button onClick={() => setDialog("dispatch")}>Send Pre-alert to Shipper</Button>
         </>,
       );
       break;
@@ -518,7 +572,7 @@ export function JobNextAction({ job, initial }: { job: Job; initial?: JobDialog 
         <>
           {row(
             <>
-              Documents dispatched to the CHA on {fmtDateTime(job.dispatchedAt)}. Booking completed. Update the shipment status once the flight leaves.
+              Pre-alert sent to the shipper on {fmtDateTime(job.dispatchedAt)}. Booking completed. Update the shipment status once the flight leaves.
             </>,
             notifyBtn,
           )}
@@ -567,7 +621,7 @@ export function JobNextAction({ job, initial }: { job: Job; initial?: JobDialog 
         <>
           {row(<>This job is <b>on hold</b>. Pick the status to continue.</>, notifyBtn)}
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" variant="secondary" onClick={() => actions.setJobStatus(job.id, job.dispatchedAt ? "Booking Completed" : job.merged ? "CHA Dispatch Pending" : awb?.status === "AWB Executed" ? "Pending Documents" : "AWB In Progress")}>
+            <Button size="sm" variant="secondary" onClick={() => actions.setJobStatus(job.id, job.dispatchedAt ? "Booking Completed" : job.merged ? "Pre-alert Pending" : awb?.status === "AWB Executed" ? "Pending Documents" : "AWB In Progress")}>
               Resume
             </Button>
             {finalButtons}
@@ -584,8 +638,9 @@ export function JobNextAction({ job, initial }: { job: Job; initial?: JobDialog 
     <>
       {body}
       {dialog === "awb" && <AwbFormModal job={job} onClose={close} />}
-      {dialog === "editAwb" && awb && <AwbFormModal job={job} existing={awb} onClose={close} />}
-      {dialog === "previewAwb" && awb && <AwbPreviewModal awb={awb} onClose={close} onEdit={() => setDialog("editAwb")} />}
+      {dialog === "editAwb" && awb && <AwbFormModal job={job} existing={previewed} onClose={close} />}
+      {dialog === "previewAwb" && previewed && <AwbPreviewModal awb={previewed} siblings={awbs} onClose={close} onEdit={() => setDialog("editAwb")} />}
+      {dialog === "pickAwb" && <AwbPicker awbs={awbs} onPick={(i) => (setPreviewId(awbs[i].id), setDialog("previewAwb"))} onClose={close} />}
       {dialog === "awbStatus" && awb && <AwbStatusModal awb={awb} onClose={close} />}
       {dialog === "upload" && <DocsUploadModal job={job} onClose={close} onMerge={() => setDialog("merge")} />}
       {dialog === "merge" && <MergeModal job={job} onClose={close} onDispatch={() => setDialog("dispatch")} />}

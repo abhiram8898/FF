@@ -29,7 +29,7 @@ export const JOB_STATUSES = [
   "AWB In Progress",
   "Pending Documents",
   "Documents Uploaded",
-  "CHA Dispatch Pending",
+  "Pre-alert Pending",
   "Booking Completed",
   "Departed",
   "Cargo In Transit",
@@ -38,7 +38,7 @@ export const JOB_STATUSES = [
 ] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
-/** Statuses a user picks by hand after the documents reach the CHA (FRD VIII.16) */
+/** Statuses a user picks by hand after the pre-alert is sent (FRD VIII.16) */
 export const JOB_FINAL_STATUSES = ["Departed", "Cargo In Transit", "On Hold", "Cancelled"] as const satisfies readonly JobStatus[];
 
 export const ENQUIRY_STATUSES = [
@@ -149,6 +149,16 @@ export interface Airline {
   portalUrl: string;
   /** Airport codes this airline serves */
   ports: string[];
+  /** Contacts per branch (Airline master); a branch's email is used for its rate requests */
+  branchContacts?: AirlineBranchContact[];
+}
+
+export interface AirlineBranchContact {
+  id: string;
+  branch: string;
+  name: string;
+  email: string;
+  phone: string;
 }
 
 /** A weight break on a rate sheet, e.g. "+45" → 220 per kg from 45 kg */
@@ -395,6 +405,8 @@ export interface Awb {
   statusAt: string;
   createdAt: string;
   // Section I – General
+  /** House AWB number from the company sequence (Settings → Ref Number Format) or typed by hand */
+  hawbSource?: HawbSource;
   hawbNo: string;
   hawbDate: string;
   mawbNo: string;
@@ -452,11 +464,17 @@ export interface Awb {
   destCurrency: string;
   /** Filled by the carrier at destination */
   chargesAtDestination: number;
+  /** Older free-text invoice field; new AWBs use invoiceNo and invoiceDate */
   invoiceDetails: string;
+  invoiceNo?: string;
+  invoiceDate?: string;
   natureOfGoods: string;
   handlingInfo: string;
   sentAt?: string;
 }
+
+export const HAWB_SOURCES = ["Own", "Others"] as const;
+export type HawbSource = (typeof HAWB_SOURCES)[number];
 
 export const RESERVATION_STATUSES = [
   "Draft",
@@ -669,6 +687,8 @@ export interface Bill {
   etd: string;
   eta: string;
   commodity: string;
+  /** Botanical / scientific name of the commodity, e.g. for perishables */
+  scientificName?: string;
   jobNo: string;
   jobDate: string;
   sbNo: string;
@@ -711,6 +731,7 @@ export type EmailKind =
   | "Booking Confirmation"
   | "AWB"
   | "CHA Dispatch"
+  | "Pre-alert"
   | "Customer Invoice"
   | "Proforma"
   | "Invoice"
@@ -951,6 +972,8 @@ export interface Settings {
     accreditationLogo?: string;
     letterhead?: string;
     footer?: string;
+    /** Authorised signature printed on AWB copies when "With Sign" is ticked */
+    signatureImage?: string;
   };
   banks: BankAccount[];
   /** Company Code used in reference numbers */
@@ -960,6 +983,8 @@ export interface Settings {
   reservationRef: RefPattern;
   jobRef: RefPattern;
   invoiceRef: RefPattern;
+  /** House AWB numbers given by the company ("HAWB by Own") */
+  hawbRef: RefPattern;
   branches: Branch[];
   financialYears: FinancialYear[];
   gstPercent: number;
@@ -1011,5 +1036,5 @@ export interface State {
   notifications: Notification[];
   /** Audit trail of master and reservation changes */
   audit: HistoryEntry[];
-  counters: { enquiry: number; quote: number; reservation: number; job: number; invoice: number; proforma: number };
+  counters: { enquiry: number; quote: number; reservation: number; job: number; invoice: number; proforma: number; hawb: number; creditNote: number };
 }

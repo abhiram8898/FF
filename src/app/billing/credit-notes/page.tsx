@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { CircleCheck, FileMinus, FilePen } from "lucide-react";
+import { CircleCheck, FileMinus, FilePen, Plus } from "lucide-react";
 import { useLookups, useStore } from "@/lib/store";
 import type { Bill } from "@/lib/types";
 import { BILL_TONE, billTotals, f2, fmtDate, matches } from "@/lib/utils";
-import { Badge, Card, FilterBar, type KpiDef, KpiFilters, kpiTest, NoResults, PageHeader, ResetFilters, RowActions, SearchField, Table, linkCls } from "@/components/ui";
+import { Badge, Button, Card, Field, FilterBar, type KpiDef, KpiFilters, kpiTest, Modal, NoResults, PageHeader, ResetFilters, RowActions, SearchField, Select, Table, linkCls } from "@/components/ui";
 import { BillPreviewModal } from "@/components/billing";
 
 export default function CreditNotesPage() {
   const { state } = useStore();
   const { customer, job } = useLookups();
+  const [adding, setAdding] = useState(false);
   const [q, setQ] = useState("");
   const [view, setView] = useState<Bill | null>(null);
   const [kpi, setKpi] = useState<string | null>(null);
@@ -33,7 +35,12 @@ export default function CreditNotesPage() {
     <>
       <PageHeader
         title="Credit Note"
-        subtitle="Created automatically when an invoice is cancelled: same details with negative amounts and the number's INV replaced by CN. Edit if needed, then Issue."
+        subtitle="Created automatically when an invoice is cancelled, or by hand for any job. Same details with negative amounts; edit if needed, then Issue."
+        actions={
+          <Button onClick={() => setAdding(true)}>
+            <Plus size={16} aria-hidden /> New Credit Note
+          </Button>
+        }
       />
       <KpiFilters cols={3} rows={all} kpis={KPIS} active={kpi} onChange={setKpi} />
       <FilterBar>
@@ -103,11 +110,60 @@ export default function CreditNotesPage() {
           </Table>
         ) : (
           <NoResults filtered={filtered} onClear={reset}>
-            No credit notes. Cancelling an invoice creates one.
+            No credit notes. Cancelling an invoice creates one, or use New Credit Note for any job.
           </NoResults>
         )}
       </Card>
       {view && <BillPreviewModal bill={view} onClose={() => setView(null)} />}
+      {adding && <NewCreditNoteModal onClose={() => setAdding(false)} />}
     </>
+  );
+}
+
+/** Credit note by hand: pick the job; it opens as a draft filled from the job with the amounts reversed */
+function NewCreditNoteModal({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const { state, actions } = useStore();
+  const { customer } = useLookups();
+  const [jobId, setJobId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const jobs = [...state.jobs].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="New Credit Note"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!jobId || busy}
+            onClick={() => {
+              // A double click would otherwise raise two credit notes
+              if (busy) return;
+              setBusy(true);
+              const cn = actions.createCreditNote(jobId);
+              if (cn) router.push(`/billing/${cn.id}`);
+              else setBusy(false);
+            }}
+          >
+            Create Credit Note
+          </Button>
+        </>
+      }
+    >
+      <Field label="Job Number *" hint="The credit note takes the job's customer, AWB and charges (as negative amounts). Adjust the lines before issuing.">
+        <Select value={jobId} onChange={(e) => setJobId(e.target.value)}>
+          <option value="">Select a job</option>
+          {jobs.map((j) => (
+            <option key={j.id} value={j.id}>
+              {j.ref} · {customer(j.customerId)?.name ?? j.shipperName} · {j.status}
+            </option>
+          ))}
+        </Select>
+      </Field>
+    </Modal>
   );
 }

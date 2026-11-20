@@ -1,17 +1,34 @@
 "use client";
 
 import { useState } from "react";
-import { Globe, Plane, Plus, Scale, Send } from "lucide-react";
+import { Globe, Plane, Plus, Scale, Send, Trash2 } from "lucide-react";
 import { useStore } from "@/lib/store";
-import type { Airline } from "@/lib/types";
-import { matches } from "@/lib/utils";
-import { Badge, Button, Card, FilterBar, FilterSelect, type KpiDef, KpiFilters, kpiTest, NoResults, PageHeader, ResetFilters, RowActions, SearchField, Table } from "@/components/ui";
+import type { Airline, AirlineBranchContact } from "@/lib/types";
+import { isEmail, matches, uid } from "@/lib/utils";
+import { Badge, Button, Card, FilterBar, FilterSelect, Input, type KpiDef, KpiFilters, kpiTest, NoResults, PageHeader, ResetFilters, RowActions, SearchField, Select, Table } from "@/components/ui";
 import { FormModal } from "@/components/FormModal";
 import { AirlineTabs } from "@/components/AirlineTabs";
 
 export default function AirlinesPage() {
   const { state, actions } = useStore();
   const [editing, setEditing] = useState<Airline | "new" | null>(null);
+  const [contacts, setContacts] = useState<AirlineBranchContact[]>([]);
+  const edit = (a: Airline | "new") => {
+    setContacts(a === "new" ? [] : (a.branchContacts ?? []));
+    setEditing(a);
+  };
+  const branches = state.settings.branches.map((b) => b.name).filter(Boolean);
+  const setContact = (id: string, patch: Partial<AirlineBranchContact>) => setContacts((list) => list.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  // Empty rows are dropped on save, so only filled ones are checked; one contact per branch, since only one is used
+  const filled = contacts.filter((c) => c.name.trim() || c.email.trim() || c.phone.trim());
+  const twice = filled.map((c) => c.branch).find((b, i, all) => b && all.indexOf(b) !== i);
+  const contactProblem = filled.some((c) => c.email.trim() && !isEmail(c.email))
+    ? "Check the contact email addresses."
+    : filled.some((c) => !c.branch)
+      ? "Pick the branch for each contact."
+      : twice
+        ? `${twice} has two contacts. Keep one per branch (it is the one rate requests go to).`
+        : "";
   const [q, setQ] = useState("");
   const [port, setPort] = useState("all");
 
@@ -38,7 +55,7 @@ export default function AirlinesPage() {
         title="Airline & Rates"
         subtitle="Rate requests go to the email below. The airports served decide which airlines are offered for a route."
         actions={
-          <Button onClick={() => setEditing("new")}>
+          <Button onClick={() => edit("new")}>
             <Plus size={16} aria-hidden /> Add airline
           </Button>
         }
@@ -77,6 +94,11 @@ export default function AirlinesPage() {
                   <td className="whitespace-nowrap">
                     <div className="font-medium">{a.name}</div>
                     {(a.contactPerson || a.mobile) && <div className="text-xs text-slate-500">{[a.contactPerson, a.mobile].filter(Boolean).join(" · ")}</div>}
+                    {!!a.branchContacts?.length && (
+                      <div className="text-xs text-slate-500" title={a.branchContacts.map((c) => `${c.branch}: ${c.name} ${c.email}`).join("\n")}>
+                        Branch contacts: {a.branchContacts.map((c) => c.branch).join(", ")}
+                      </div>
+                    )}
                   </td>
                   <td>{a.code}</td>
                   <td className="font-mono">{a.prefix}</td>
@@ -92,7 +114,7 @@ export default function AirlinesPage() {
                     <RowActions
                       label={`Actions for ${a.name}`}
                       items={[
-                        { label: "Edit", onSelect: () => setEditing(a) },
+                        { label: "Edit", onSelect: () => edit(a) },
                         ...(a.portalUrl ? [{ label: "Open booking portal", onSelect: () => window.open(a.portalUrl, "_blank", "noopener,noreferrer") }] : []),
                         { label: "Email rate desk", href: `mailto:${a.email}` },
                       ]}
@@ -127,11 +149,50 @@ export default function AirlinesPage() {
             { key: "ports", label: "Airports served (comma separated codes, e.g. COK, DXB, LHR)" },
             { key: "logo", label: "Airline logo (printed as the issuer on Master AWBs)", image: true },
           ]}
+          wide
+          extraValid={!contactProblem}
+          extra={
+            <section className="mt-4 border-t border-slate-100 pt-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">Contacts by branch</h3>
+                  <p className="text-xs text-slate-500">Rate requests from a branch go to its contact&apos;s email; without one, the email above is used.</p>
+                </div>
+                <Button size="sm" variant="secondary" onClick={() => setContacts((list) => [...list, { id: uid(), branch: branches[0] ?? "", name: "", email: "", phone: "" }])}>
+                  <Plus size={13} aria-hidden /> Add contact
+                </Button>
+              </div>
+              {contacts.length ? (
+                <div className="space-y-2">
+                  {contacts.map((c) => (
+                    <div key={c.id} className="grid grid-cols-2 items-center gap-2 sm:grid-cols-[9rem_minmax(0,1fr)_minmax(0,1.3fr)_9rem_2rem]">
+                      <Select aria-label="Branch" value={c.branch} onChange={(e) => setContact(c.id, { branch: e.target.value })}>
+                        <option value="">Branch</option>
+                        {branches.map((b) => (
+                          <option key={b}>{b}</option>
+                        ))}
+                      </Select>
+                      <Input aria-label="Contact name" placeholder="Name" value={c.name} onChange={(e) => setContact(c.id, { name: e.target.value })} />
+                      <Input aria-label="Contact email" type="email" placeholder="Email" value={c.email} aria-invalid={!!c.email && !isEmail(c.email)} onChange={(e) => setContact(c.id, { email: e.target.value.trim() })} />
+                      <Input aria-label="Contact phone" placeholder="Phone" value={c.phone} onChange={(e) => setContact(c.id, { phone: e.target.value })} />
+                      <button type="button" onClick={() => setContacts((list) => list.filter((x) => x.id !== c.id))} className="rounded p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" aria-label={`Remove ${c.name || "contact"}`}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  {contactProblem && <p className="text-xs text-red-600">{contactProblem}</p>}
+                </div>
+              ) : (
+                <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">No branch contacts yet.</p>
+              )}
+            </section>
+          }
           onSave={(v) =>
             actions.saveAirline(
               {
                 ...v,
                 logo: v.logo || undefined,
+                branchContacts: filled,
                 code: v.code.toUpperCase(),
                 ports: [
                   ...new Set(

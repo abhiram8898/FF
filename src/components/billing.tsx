@@ -95,6 +95,7 @@ export function BillDocument({ bill: b }: { bill: Bill }) {
               ["Airline & Flight No", b.airlineFlight],
               ["ETD / ETA", [fmtDmy(b.etd), fmtDmy(b.eta)].filter(Boolean).join(" / ")],
               ["Description", b.commodity],
+              ...(b.scientificName ? ([["Scientific Name", b.scientificName]] as [string, string][]) : []),
             ])}
           </div>
         </div>
@@ -313,7 +314,7 @@ export function SendBillFlow({ bill, onClose }: { bill: Bill; onClose: () => voi
   );
 }
 
-/** Preview with Back to Invoice & Send, plus Approve (proforma) or Issue (credit note) */
+/** Preview with Back (to the invoice or credit note) & Send, plus Approve (proforma) or Issue (credit note) */
 export function BillPreviewModal({ bill, onClose, unsaved }: { bill: Bill; onClose: () => void; unsaved?: boolean }) {
   const router = useRouter();
   const { actions } = useStore();
@@ -330,7 +331,7 @@ export function BillPreviewModal({ bill, onClose, unsaved }: { bill: Bill; onClo
           <Badge className={BILL_TONE[bill.status]}>{bill.status}</Badge>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={onClose}>
-              Back to Invoice
+              Back to {bill.kind === "Credit Note" ? "Credit Note" : "Invoice"}
             </Button>
             <Button variant="secondary" onClick={() => window.print()}>
               Print / Save PDF
@@ -547,8 +548,11 @@ export function BillEditor({ bill }: { bill: Bill }) {
           <Field label="ETA">
             <Input type="date" value={b.eta} onChange={str("eta")} />
           </Field>
-          <Field label="Commodity" className="col-span-2">
+          <Field label="Commodity">
             <Input value={b.commodity} onChange={str("commodity")} />
+          </Field>
+          <Field label="Scientific Name" hint="Botanical name, e.g. for fresh produce">
+            <Input value={b.scientificName ?? ""} onChange={str("scientificName")} />
           </Field>
           <Field label="To (customer name & address)" className="col-span-2">
             <Textarea rows={4} value={b.to} onChange={str("to")} />

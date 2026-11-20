@@ -484,7 +484,9 @@ function AddReplyModal({ email, onClose }: { email: InboxEmail; onClose: () => v
   const [enquiryId, setEnquiryId] = useState(matched?.id ?? "");
   const [saveToMaster, setSaveToMaster] = useState(false);
   const enq = state.enquiries.find((e) => e.id === enquiryId);
-  const airlineId = email.airlineId ?? state.airlines.find((a) => a.email === email.fromEmail)?.id;
+  // Replies can come from the airline's main address or a branch contact's
+  const from = email.fromEmail.trim().toLowerCase();
+  const airlineId = email.airlineId ?? state.airlines.find((a) => [a.email, ...(a.branchContacts ?? []).map((c) => c.email)].some((e) => e?.trim().toLowerCase() === from))?.id;
 
   return (
     <Modal open onClose={onClose} title="Add to Enquiry" wide>

@@ -11,7 +11,7 @@ import { AwbFormModal, AwbPreviewModal, AwbStatusModal, awbLabel } from "@/compo
 
 export default function AwbsPage() {
   const { state, actions } = useStore();
-  const { job } = useLookups();
+  const { job, awbsOf } = useLookups();
   const [q, setQ] = useState("");
   const [type, setType] = useState<"all" | Awb["type"]>("all");
   const [view, setView] = useState<Awb | null>(null);
@@ -143,7 +143,7 @@ export default function AwbsPage() {
         )}
       </Card>
 
-      {view && <AwbPreviewModal awb={view} onClose={() => setView(null)} onEdit={job(view.jobId) ? () => (setEditing(view), setView(null)) : undefined} />}
+      {view && <AwbPreviewModal awb={view} siblings={awbsOf(view.jobId)} onClose={() => setView(null)} onEdit={job(view.jobId) ? () => (setEditing(view), setView(null)) : undefined} />}
       {editing && job(editing.jobId) && <AwbFormModal job={job(editing.jobId)!} existing={editing} onClose={() => setEditing(null)} />}
       {statusFor && <AwbStatusModal awb={statusFor} onClose={() => setStatusFor(null)} />}
     </>

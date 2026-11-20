@@ -14,7 +14,7 @@ import { awbLabel } from "@/components/awb";
 const LINE_TONE: Record<ReturnType<typeof docsLineStatus>, string> = {
   "Pending Documents": "bg-amber-50 text-amber-800 ring-amber-200",
   "Uploading Completed": "bg-violet-50 text-violet-800 ring-violet-200",
-  "CHA Dispatch Pending": "bg-sky-50 text-sky-800 ring-sky-200",
+  "Pre-alert Pending": "bg-sky-50 text-sky-800 ring-sky-200",
   "Booking Completed": "bg-emerald-50 text-emerald-800 ring-emerald-200",
 };
 
@@ -22,7 +22,7 @@ type Dialog = { kind: "upload" | "merge" | "dispatch"; jobId: string } | null;
 
 function Documents() {
   const { state } = useStore();
-  const { customer, job, awbOf } = useLookups();
+  const { customer, job, awbsOf } = useLookups();
   const params = useSearchParams();
   const [q, setQ] = useState("");
   const [line, setLine] = useState<"all" | ReturnType<typeof docsLineStatus>>("all");
@@ -38,14 +38,14 @@ function Documents() {
     { id: "all", icon: FileStack, label: "Executed AWBs" },
     { id: "pending", icon: Upload, tone: "amber", label: "Pending Documents", test: isLine("Pending Documents") },
     { id: "merge", icon: Merge, tone: "violet", label: "Merge Pending", test: isLine("Uploading Completed") },
-    { id: "cha", icon: Send, tone: "sky", label: "CHA Dispatch Pending", test: isLine("CHA Dispatch Pending") },
+    { id: "cha", icon: Send, tone: "sky", label: "Pre-alert Pending", test: isLine("Pre-alert Pending") },
     { id: "done", icon: FileCheck2, tone: "green", label: "Booking Completed", test: isLine("Booking Completed") },
   ];
   const kpiOk = kpiTest(KPIS, kpi);
   const filtered = !!q.trim() || line !== "all" || kpi !== null;
   const rows = all
     .filter(kpiOk)
-    .filter((j) => (line === "all" || docsLineStatus(j) === line) && matches(q, [j.ref, customer(j.customerId)?.name, j.awbNo, j.chaName, ...j.documents.map((d) => d.title)]))
+    .filter((j) => (line === "all" || docsLineStatus(j) === line) && matches(q, [j.ref, customer(j.customerId)?.name, j.awbNo, j.shipperName, ...awbsOf(j.id).map((a) => a.hawbNo), ...j.documents.map((d) => d.title)]))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const reset = () => {
     setQ("");
@@ -55,12 +55,12 @@ function Documents() {
 
   return (
     <>
-      <PageHeader title="Documents" subtitle="Upload the shipment documents for each executed AWB, merge them into one PDF and dispatch to the CHA." />
+      <PageHeader title="Documents" subtitle="Upload the shipment documents for each executed AWB, merge them into one PDF and send the pre-alert to the shipper." />
 
       <KpiFilters cols={5} rows={all} kpis={KPIS} active={kpi} onChange={setKpi} />
 
       <FilterBar>
-        <SearchField label="Search documents" value={q} onChange={setQ} placeholder="Search job, AWB, customer, CHA, document…" />
+        <SearchField label="Search documents" value={q} onChange={setQ} placeholder="Search job, AWB, customer, shipper, document…" />
         <FilterSelect label="Line status" value={line} onChange={(e) => setLine(e.target.value as typeof line)}>
           <option value="all">All Status</option>
           {Object.keys(LINE_TONE).map((s) => (
@@ -78,7 +78,7 @@ function Documents() {
                 <th>Job No</th>
                 <th>AWB</th>
                 <th>Customer</th>
-                <th>CHA</th>
+                <th>Shipper</th>
                 <th className="text-right">Documents</th>
                 <th>Merged</th>
                 <th>Line Status</th>
@@ -88,7 +88,7 @@ function Documents() {
             </thead>
             <tbody>
               {rows.map((j) => {
-                const awb = awbOf(j.id);
+                const jobAwbs = awbsOf(j.id);
                 const status = docsLineStatus(j);
                 return (
                   <tr key={j.id} className="hover:bg-slate-50">
@@ -97,9 +97,9 @@ function Documents() {
                         {j.ref}
                       </Link>
                     </td>
-                    <td className="font-mono text-xs whitespace-nowrap">{awb ? awbLabel(awb) : j.awbNo || "—"}</td>
+                    <td className="font-mono text-xs whitespace-nowrap">{jobAwbs.length ? jobAwbs.map((a) => <div key={a.id}>{awbLabel(a)}</div>) : j.awbNo || "—"}</td>
                     <td className="max-w-44 truncate">{customer(j.customerId)?.name}</td>
-                    <td className="max-w-40 truncate">{j.chaName || <span className="text-amber-700">Not chosen</span>}</td>
+                    <td className="max-w-40 truncate">{j.shipperName || <span className="text-amber-700">Not chosen</span>}</td>
                     <td className="text-right tabular-nums">{j.documents.length}</td>
                     <td className="text-xs whitespace-nowrap text-slate-600">
                       {j.merged ? (
@@ -126,7 +126,7 @@ function Documents() {
                         items={[
                           { label: "Upload Documents", onSelect: () => setDialog({ kind: "upload", jobId: j.id }) },
                           ...(j.uploadCompletedAt ? [{ label: "Merge Documents", onSelect: () => setDialog({ kind: "merge", jobId: j.id }) }] : []),
-                          ...(j.merged ? [{ label: "Dispatch To CHA", onSelect: () => setDialog({ kind: "dispatch", jobId: j.id }) }] : []),
+                          ...(j.merged ? [{ label: "Send Pre-alert to Shipper", onSelect: () => setDialog({ kind: "dispatch", jobId: j.id }) }] : []),
                           { label: "Open job", href: `/shipments/${j.id}` },
                         ]}
                       />

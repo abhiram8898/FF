@@ -14,22 +14,31 @@ export function FormModal<T extends Record<string, string>>({
   initial,
   onSave,
   onClose,
+  extra,
+  extraValid = true,
+  wide,
 }: {
   title: string;
   fields: FormField<T>[];
   initial: T;
   onSave: (values: T) => void;
   onClose: () => void;
+  /** More inputs under the fields (e.g. a list), kept by the caller */
+  extra?: React.ReactNode;
+  /** False while the extra inputs have a problem */
+  extraValid?: boolean;
+  wide?: boolean;
 }) {
   const [v, setV] = useState<T>(initial);
   const errorFor = (f: FormField<T>) =>
     f.email && v[f.key].trim() && !isEmail(v[f.key]) ? "Enter a valid email address" : f.pattern && v[f.key].trim() && !f.pattern.test(v[f.key].trim()) ? (f.patternHint ?? "Check the format") : "";
-  const valid = fields.every((f) => (!f.required || v[f.key].trim()) && !errorFor(f));
+  const valid = fields.every((f) => (!f.required || v[f.key].trim()) && !errorFor(f)) && extraValid;
   return (
     <Modal
       open
       onClose={onClose}
       title={title}
+      wide={wide}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
@@ -66,6 +75,7 @@ export function FormModal<T extends Record<string, string>>({
           ),
         )}
       </div>
+      {extra}
     </Modal>
   );
 }

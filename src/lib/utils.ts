@@ -1,6 +1,7 @@
 import type {
   Airline,
   AirlineRate,
+  Awb,
   AwbStatus,
   BankDetails,
   Bill,
@@ -258,8 +259,8 @@ export function matches(term: string, values: (string | number | undefined)[]) {
   return !t || values.some((v) => v !== undefined && String(v).toLowerCase().includes(t));
 }
 
-/** Job stages after the AWB is executed and before the documents reach the CHA */
-export const DOCUMENT_STAGE_STATUSES: readonly JobStatus[] = ["Pending Documents", "Documents Uploaded", "CHA Dispatch Pending"];
+/** Job stages after the AWB is executed and before the pre-alert goes to the shipper */
+export const DOCUMENT_STAGE_STATUSES: readonly JobStatus[] = ["Pending Documents", "Documents Uploaded", "Pre-alert Pending"];
 
 /** Statuses reached once a Booking/Job exists */
 export const JOB_STAGE_STATUSES: readonly EnquiryStatus[] = JOB_STATUSES.filter((s) => s !== "Cancelled");
@@ -426,7 +427,7 @@ export const STEPS = [
   "AWB",
   "Upload Documents",
   "Merge Documents",
-  "Dispatch to CHA",
+  "Send Pre-alert",
   "Complete",
 ] as const;
 
@@ -441,7 +442,7 @@ const STEP_INDEX: Record<EnquiryStatus, number> = {
   "AWB In Progress": 7,
   "Pending Documents": 8,
   "Documents Uploaded": 9,
-  "CHA Dispatch Pending": 10,
+  "Pre-alert Pending": 10,
   "Booking Completed": 11,
   Departed: 12,
   "Cargo In Transit": 12,
@@ -476,7 +477,7 @@ export const STATUS_TONE: Record<EnquiryStatus | QuotationStatus, string> = {
   "AWB In Progress": TONE.action,
   "Pending Documents": TONE.action,
   "Documents Uploaded": TONE.action,
-  "CHA Dispatch Pending": TONE.action,
+  "Pre-alert Pending": TONE.action,
   "Booking Completed": TONE.done,
   Departed: TONE.done,
   "Cargo In Transit": TONE.done,
@@ -496,6 +497,10 @@ export const RESERVATION_TONE: Record<ReservationStatus, string> = {
   Cancelled: TONE.closed,
   Departed: TONE.done,
 };
+
+/** An AWB's own number: the HAWB for a House AWB, the MAWB for a Master AWB (no fallback, so an unnumbered HAWB never shows the MAWB) */
+export const awbNumber = (a: Pick<Awb, "type" | "hawbNo" | "mawbNo">) => (a.type === "House" ? a.hawbNo : a.mawbNo);
+export const awbLabel = (a: Pick<Awb, "type" | "hawbNo" | "mawbNo">) => `${a.type === "House" ? "HAWB" : "MAWB"} ${awbNumber(a) || "—"}`;
 
 export const AWB_TONE: Record<AwbStatus, string> = {
   Draft: TONE.neutral,
@@ -533,7 +538,7 @@ export const STAGES = [
   { key: "booking", label: "Waiting for Booking Confirmation", hint: "Date confirmed, airline to confirm", statuses: ["Booking in Progress"] },
   { key: "booked", label: "Booking Confirmed", hint: "Flight booked", statuses: ["Booking Confirmed"] },
   { key: "awb", label: "AWB Pending", hint: "Job created, AWB not executed", statuses: ["AWB In Progress"] },
-  { key: "docs", label: "Document Upload Pending", hint: "Upload, merge & dispatch to CHA", statuses: ["Pending Documents", "Documents Uploaded", "CHA Dispatch Pending"] },
+  { key: "docs", label: "Document Upload Pending", hint: "Upload, merge & send the pre-alert", statuses: ["Pending Documents", "Documents Uploaded", "Pre-alert Pending"] },
 ] as const satisfies readonly { key: string; label: string; hint: string; statuses: readonly EnquiryStatus[] }[];
 
 export type StageKey = (typeof STAGES)[number]["key"];
@@ -620,3 +625,26 @@ export const billBank = (s: Pick<Settings, "banks">, bankId?: string) => s.banks
 /** "HDFC Bank, Mulanthuruthy · A/C ••7993 (INR)" */
 export const bankLabel = (b: Pick<BankDetails, "bankName" | "bankBranch" | "accountNo" | "accountTitle">) =>
   `${b.bankName || "Bank"}${b.bankBranch ? `, ${b.bankBranch}` : ""} · A/C ••${b.accountNo.slice(-4) || "—"}${b.accountTitle ? ` (${b.accountTitle})` : ""}`;
+
+/** Saves a file the app made (PDF, Word, Excel, image) to the user's downloads */
+export function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** Safe file-name part: letters, digits and dashes */
+export const fileSafe = (s: string) => s.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+/** Where an airline's mail goes for a branch: that branch's contact (Airline master), else the airline's own email */
+export const airlineEmailFor = (a: Pick<Airline, "email" | "branchContacts">, branch?: string) =>
+  a.branchContacts?.find((c) => c.branch === branch && c.email.trim())?.email ?? a.email;
+
+/** Calendar days as UTC dates, so month grids never shift with the time zone */
+export const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+export const utcDay = (s: string) => new Date(`${s}T00:00:00Z`);

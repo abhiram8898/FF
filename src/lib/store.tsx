@@ -37,20 +37,29 @@ import type {
   StoredDoc,
 } from "./types";
 import { JOB_STATUSES, NOTIFICATION_EVENTS, QUOTATION_STATUSES } from "./types";
-import { DOCUMENT_STAGE_STATUSES, addDays, billTotals, branchCode, buildQuoteLines, buildRef, fmtPort, isBillLocked, isHtml, joinAddress, parseRate, safeHttpUrl, textToHtml, today, uid } from "./utils";
+import { DOCUMENT_STAGE_STATUSES, addDays, awbLabel, awbNumber, billTotals, branchCode, buildQuoteLines, buildRef, fmtPort, isBillLocked, isHtml, joinAddress, omit, parseRate, round2, safeHttpUrl, textToHtml, today, uid, airlineEmailFor } from "./utils";
 import { PageLoader } from "@/components/ui";
 
 // Bumped when the saved data's shape changes, so old demo data is reseeded
 const STORAGE_KEY = "freighttask:v6";
 
 /** Brings data saved by an older version up to date */
-function migrate(s: State): State {
+export function migrate(s: State): State {
   // One bank account → a list of accounts (Company Set up → Bank Account)
   const settings = s.settings as State["settings"] & { bank?: BankDetails };
   if (!Array.isArray(settings.banks)) {
     const { bank, ...rest } = settings;
     s = { ...s, settings: { ...rest, banks: bank ? [{ ...bank, id: uid(), isDefault: true }] : [] } };
   }
+  // House AWB number format and counters added later
+  if (!s.settings.hawbRef) s = { ...s, settings: { ...s.settings, hawbRef: { label: "", auto: true, parts: ["company", "branch", "seq"], separator: "-", digits: 5 } } };
+  if (s.counters.hawb === undefined || s.counters.creditNote === undefined) s = { ...s, counters: { ...s.counters, hawb: s.counters.hawb ?? 0, creditNote: s.counters.creditNote ?? 0 } };
+  // The single "Invoice Details" text on an AWB became Invoice Number + Invoice Date
+  if (s.awbs.some((a) => a.invoiceNo === undefined)) s = { ...s, awbs: s.awbs.map((a) => (a.invoiceNo === undefined ? { ...a, invoiceNo: a.invoiceDetails, invoiceDate: "" } : a)) };
+  // "CHA Dispatch Pending" became "Pre-alert Pending" when the documents started going to the shipper
+  const OLD_PREALERT = "CHA Dispatch Pending";
+  if (s.jobs.some((j) => (j.status as string) === OLD_PREALERT)) s = { ...s, jobs: s.jobs.map((j) => ((j.status as string) === OLD_PREALERT ? { ...j, status: "Pre-alert Pending" } : j)) };
+  if (s.enquiries.some((e) => (e.status as string) === OLD_PREALERT)) s = { ...s, enquiries: s.enquiries.map((e) => ((e.status as string) === OLD_PREALERT ? { ...e, status: "Pre-alert Pending" as Enquiry["status"] } : e)) };
   return s;
 }
 
@@ -189,6 +198,35 @@ export function nextJobRef(s: State, data: Pick<JobInput, "customerId" | "pol" |
   });
 }
 
+/** House AWB number for "HAWB by Own" (Settings → Ref Number Format → House AWB Number); offset for several at once */
+export function nextHawbNo(s: State, branch?: string, offset = 1) {
+  return buildRef(s.settings.hawbRef, { company: s.settings.refPrefix, branch: branchCode(s.settings, branch), year: yearOf(), seq: s.counters.hawb + offset });
+}
+
+/**
+ * A credit note raised by hand for a job: invoice pattern with CN in place of INV. Credit notes made when an
+ * invoice is cancelled share the pattern, so numbers already on a bill are skipped. seq is the counter to store.
+ */
+export function nextCreditNoteNo(s: State, data: { customerId: string; branch: string }) {
+  const p = { ...s.settings.invoiceRef, label: "CN" };
+  const parts = { company: s.settings.refPrefix, client: customerCode(s, data.customerId), branch: branchCode(s.settings, data.branch), year: yearOf() };
+  for (let seq = s.counters.creditNote + 1; ; seq++) {
+    const no = buildRef(p, { ...parts, seq });
+    if (!s.bills.some((b) => b.no === no)) return { no, seq };
+  }
+}
+
+/** Everything an AWB needs before it can be executed (number-only HAWBs are saved incomplete) */
+export const awbMissing = (a: Pick<Awb, "type" | "hawbNo" | "mawbNo" | "shipper" | "consignee" | "legs">) =>
+  [
+    !awbNumber(a).trim() && "AWB number",
+    // "157-" (only the airline prefix) is not a MAWB yet
+    a.type === "House" && !a.mawbNo.replace(/^\s*\d{3}\s*-?/, "").trim() && "MAWB number",
+    !a.shipper.trim() && "shipper",
+    !a.consignee.trim() && "consignee",
+    !a.legs[0]?.flightNo?.trim() && "first flight",
+  ].filter(Boolean) as string[];
+
 export function nextReservationRef(s: State, data: Pick<ReservationInput, "customerId" | "branch" | "shipmentDate" | "pol" | "pod">, offset = 1) {
   return buildRef(s.settings.reservationRef, {
     company: s.settings.refPrefix,
@@ -226,7 +264,13 @@ const taxModeFor = (s: State, customerId: string): Bill["taxMode"] => {
 export function proformaDraft(s: State, job: Job): Omit<Bill, "id" | "no" | "createdAt" | "status" | "statusAt"> {
   const cust = s.customers.find((c) => c.id === job.customerId);
   const shipper = s.customers.find((c) => c.id === job.shipperId);
-  const awb = s.awbs.find((a) => a.jobId === job.id && a.status !== "Cancelled");
+  const awbs = s.awbs.filter((a) => a.jobId === job.id && a.status !== "Cancelled").sort((x, y) => x.createdAt.localeCompare(y.createdAt));
+  const awb = awbs[0];
+  const houses = awbs.filter((a) => a.type === "House");
+  const houseNos = houses.filter((a) => a.hawbNo);
+  // Several HAWBs under one MAWB: the bill covers all of them (a Master AWB alongside them repeats their totals)
+  const counted = houses.length ? houses : awbs;
+  const sum = (k: "grossWeight" | "chargeableWeight" | "pieces") => (counted.length ? round2(counted.reduce((t, a) => t + (Number(a[k]) || 0), 0)) : undefined);
   const q = s.quotations.find((x) => x.id === job.quotationId);
   const airline = s.airlines.find((a) => a.id === job.airlineId);
   const inv = s.invoices.find((i) => i.jobId === job.id && i.status !== "Cancelled");
@@ -257,8 +301,8 @@ export function proformaDraft(s: State, job: Job): Omit<Bill, "id" | "no" | "cre
     consignee: awb?.consignee.split("\n")[0] ?? "",
     mawbNo: awb?.mawbNo || job.awbNo,
     mawbDate: awb?.mawbDate ?? "",
-    hawbNo: awb?.type === "House" ? awb.hawbNo : "",
-    hawbDate: awb?.type === "House" ? awb.hawbDate : "",
+    hawbNo: houseNos.map((h) => h.hawbNo).join(", "),
+    hawbDate: houseNos[0]?.hawbDate ?? "",
     pol: port(job.pol),
     pod: port(job.pod),
     shipmentType: "Air Cargo",
@@ -272,9 +316,9 @@ export function proformaDraft(s: State, job: Job): Omit<Bill, "id" | "no" | "cre
     sbDate: "",
     invoiceNo: inv?.no ?? job.invoiceNo,
     invoiceDate: inv?.date ?? "",
-    grossWeight: awb?.grossWeight ?? job.weight,
-    chWeight: awb?.chargeableWeight ?? job.weight,
-    packages: awb?.pieces ?? job.boxes,
+    grossWeight: sum("grossWeight") ?? job.weight,
+    chWeight: sum("chargeableWeight") ?? job.weight,
+    packages: sum("pieces") ?? job.boxes,
     lines,
     taxMode: taxModeFor(s, job.customerId),
     gstPercent: s.settings.gstPercent,
@@ -660,7 +704,7 @@ function useStoreState() {
           from: "Airline",
           airlineId,
           fromName: airline.name,
-          fromEmail: airline.email,
+          fromEmail: airlineEmailFor(airline, enq.branch),
           subject: `RE: Request for Air Freight Rate – ${port(enq.pol)} to ${port(enq.pod)} [${enq.ref}]`,
           body: `Dear Airsteam team,\n\nThank you for your enquiry ${enq.ref}. Please find our rate below:\n\nRate/kg: INR ${base}\nAWB fee: INR ${[950, 1000, 1250][Math.floor(Math.random() * 3)]}\nOther charges: INR ${[0, 500, 750][Math.floor(Math.random() * 3)]}\nMinimum charge: INR ${base * 25}\nTransit: ${1 + Math.floor(Math.random() * 3)} days\nValid until: ${addDays(30)}\n\nRegards,\n${airline.name}`,
           receivedAt: now(),
@@ -961,16 +1005,40 @@ function useStoreState() {
 
       // ---- Airway Bills ----
 
-      /** "Save": stores the AWB as Draft (or saves edits). The job's AWB number follows the MAWB. */
-      saveAwb(data: AwbInput, id?: string): Awb {
+      /**
+       * Saves every AWB tab of a job (several House AWBs under one MAWB). "HAWB by Own" numbers are
+       * given here, in tab order, so a cancelled form never uses up numbers. Drafts without an id are new.
+       */
+      saveAwbs(jobId: string, drafts: (AwbInput & { id?: string })[]): Awb[] | undefined {
         let s = get();
-        const prev = s.awbs.find((a) => a.id === id);
-        const awb: Awb = prev ? { ...prev, ...data } : { ...data, id: uid(), status: "Draft", statusAt: now(), createdAt: now() };
-        s = prev ? { ...s, awbs: s.awbs.map((a) => (a.id === id ? awb : a)) } : { ...s, awbs: [awb, ...s.awbs] };
-        s = patchJob(s, data.jobId, { awbNo: data.mawbNo, ...(data.legs[0]?.flightNo && { flightNo: data.legs[0].flightNo, flightDate: data.legs[0].flightDate }) });
+        const job = s.jobs.find((j) => j.id === jobId);
+        let given = 0;
+        const seen = new Set<string>();
+        const saved: Awb[] = drafts.map((d) => {
+          // An id used twice (a copied tab) is saved as a new AWB rather than overwriting the first
+          const prev = d.id && !seen.has(d.id) ? s.awbs.find((a) => a.id === d.id) : undefined;
+          if (d.id) seen.add(d.id);
+          const data: AwbInput = omit(d, ["id"]);
+          // Automatic generation off (Ref Number Format): Own numbers are typed like Others
+          const needsNo = s.settings.hawbRef.auto && data.hawbSource === "Own" && !data.hawbNo.trim() && (!prev || !prev.hawbNo || prev.hawbSource !== "Own");
+          // An Own number already given is kept when the tab comes back without it
+          const kept = data.hawbSource === "Own" && prev?.hawbSource === "Own" ? prev.hawbNo : "";
+          const hawbNo = needsNo ? nextHawbNo(s, job?.branch, ++given) : data.hawbNo.trim() || kept;
+          return prev ? { ...prev, ...data, hawbNo } : { ...data, hawbNo, id: uid(), status: "Draft" as const, statusAt: now(), createdAt: now() };
+        });
+        // An executed AWB stays complete: refuse the whole save rather than store half of it
+        const broken = saved.filter((a) => a.status === "AWB Executed" && awbMissing(a).length);
+        if (broken.length) {
+          toast(`${broken.map(awbLabel).join(", ")} ${broken.length > 1 ? "are" : "is"} executed, so ${broken.length > 1 ? "they need" : "it needs"} the ${[...new Set(broken.flatMap(awbMissing))].join(", ")}`);
+          return undefined;
+        }
+        const ids = new Set(saved.map((a) => a.id));
+        s = { ...s, awbs: [...saved.filter((a) => !s.awbs.some((x) => x.id === a.id)), ...s.awbs.map((a) => (ids.has(a.id) ? saved.find((x) => x.id === a.id)! : a))], counters: { ...s.counters, hawb: s.counters.hawb + given } };
+        const first = saved[0];
+        if (first) s = patchJob(s, jobId, { awbNo: first.mawbNo, ...(first.legs[0]?.flightNo && { flightNo: first.legs[0].flightNo, flightDate: first.legs[0].flightDate }) });
         commit(s);
-        toast(prev ? `AWB ${awb.mawbNo || awb.hawbNo} saved` : `AWB saved as Draft`);
-        return awb;
+        toast(saved.length > 1 ? `${saved.length} AWBs saved` : `${saved[0] ? awbLabel(saved[0]) : "AWB"} saved`);
+        return saved;
       },
 
       /** Draft AWB emailed to the customer for confirmation */
@@ -987,13 +1055,18 @@ function useStoreState() {
       /** Executed AWB moves the job on to the documents; cancelling keeps the record */
       /**
        * Executing the AWB moves the job on to the documents. Taking it back (Draft / Cancelled) rewinds the job
-       * to AWB In Progress while the documents are still being prepared, and is refused once they reached the CHA.
+       * to AWB In Progress while the documents are still being prepared, and is refused once the pre-alert has gone.
        */
       setAwbStatus(id: string, status: AwbStatus): boolean {
         let s = get();
         const a = s.awbs.find((x) => x.id === id);
         if (!a) return false;
         const job = s.jobs.find((j) => j.id === a.jobId);
+        const missing = awbMissing(a);
+        if (status === "AWB Executed" && missing.length) {
+          toast(`${awbLabel(a)} can't be executed yet: add the ${missing.join(", ")}`);
+          return false;
+        }
         const otherExecuted = s.awbs.some((x) => x.id !== id && x.jobId === a.jobId && x.status === "AWB Executed");
         if (job && a.status === "AWB Executed" && status !== "AWB Executed" && !otherExecuted && !["AWB In Progress", ...DOCUMENT_STAGE_STATUSES].includes(job.status)) {
           toast(`${job.ref} is already ${job.status.toLowerCase()}, so its AWB can't be taken back`);
@@ -1011,7 +1084,37 @@ function useStoreState() {
           s = withJobStatus(patchJob(s, job.id, { merged: undefined }), job.id, "AWB In Progress");
         }
         commit(s);
-        toast(`AWB ${a.mawbNo || a.hawbNo} → ${status}`);
+        toast(`${awbLabel(a)} → ${status}`);
+        return true;
+      },
+
+      /**
+       * "AWB Executed" for a job with several AWBs: every one not yet executed is checked first, and none is
+       * executed while any is incomplete, so the job never moves on with HAWBs left behind as drafts.
+       */
+      executeAwbs(jobId: string): boolean {
+        let s = get();
+        const job = s.jobs.find((j) => j.id === jobId);
+        const pending = s.awbs.filter((a) => a.jobId === jobId && a.status !== "Cancelled" && a.status !== "AWB Executed").sort((x, y) => x.createdAt.localeCompare(y.createdAt));
+        if (!job || !pending.length) return false;
+        const gaps = pending.map((a) => ({ a, missing: awbMissing(a) })).filter((g) => g.missing.length);
+        if (gaps.length) {
+          toast(
+            gaps.length === 1
+              ? `${awbLabel(gaps[0].a)} can't be executed yet: add the ${gaps[0].missing.join(", ")}. Nothing was executed.`
+              : `${gaps.length} AWBs can't be executed yet (${gaps.map((g) => `${awbLabel(g.a)}: ${g.missing.join(", ")}`).join("; ")}). Nothing was executed.`,
+          );
+          return false;
+        }
+        for (const a of pending) s = patchAwb(s, a.id, { status: "AWB Executed", statusAt: now() });
+        if (job.status === "AWB In Progress") {
+          s = withJobStatus(s, job.id, "Pending Documents");
+          if (s.settings.alerts.notifyOnAwb && job.enquiryId) {
+            s = withNotification(s, job.enquiryId, `${pending.length > 1 ? `${pending.length} AWBs` : `${pending[0].type} AWB ${awbNumber(pending[0])}`} issued for your shipment.`, "Email");
+          }
+        }
+        commit(s);
+        toast(pending.length > 1 ? `${pending.length} AWBs executed` : `${awbLabel(pending[0])} → AWB Executed`);
         return true;
       },
 
@@ -1023,7 +1126,8 @@ function useStoreState() {
         s = { ...s, awbs: s.awbs.filter((x) => x.id !== id) };
         const job = s.jobs.find((j) => j.id === a?.jobId);
         if (job && a) {
-          if (job.awbNo === a.mawbNo) s = patchJob(s, job.id, { awbNo: "" });
+          const shared = s.awbs.some((x) => x.jobId === job.id && x.status !== "Cancelled" && x.mawbNo === a.mawbNo);
+          if (job.awbNo === a.mawbNo && !shared) s = patchJob(s, job.id, { awbNo: "" });
           if (job.status === "Pending Documents" && !s.awbs.some((x) => x.jobId === job.id && x.status === "AWB Executed")) s = withJobStatus(s, job.id, "AWB In Progress");
         }
         commit(s);
@@ -1056,18 +1160,18 @@ function useStoreState() {
         for (const key of merged.order.filter((k) => k.startsWith("invoice:"))) {
           s = patchInvoice(s, key.slice(8), { status: "Completed", statusAt: now() });
         }
-        if (["Pending Documents", "Documents Uploaded"].includes(job.status)) s = withJobStatus(s, jobId, "CHA Dispatch Pending");
+        if (["Pending Documents", "Documents Uploaded"].includes(job.status)) s = withJobStatus(s, jobId, "Pre-alert Pending");
         commit(s);
-        toast("Documents merged. Next: dispatch to CHA");
+        toast("Documents merged. Next: send the pre-alert to the shipper");
       },
 
       dispatchToCha(jobId: string, mail: MailDraft) {
         const job = get().jobs.find((j) => j.id === jobId)!;
-        let s = withLog(get(), "CHA Dispatch", mail, { jobId, enquiryId: job.enquiryId }, job.merged ? [job.merged.fileName] : []);
+        let s = withLog(get(), "Pre-alert", mail, { jobId, enquiryId: job.enquiryId }, job.merged ? [job.merged.fileName] : []);
         s = patchJob(s, jobId, { dispatchedAt: now() });
-        if (job.status === "CHA Dispatch Pending" || job.status === "Documents Uploaded" || job.status === "Pending Documents") s = withJobStatus(s, jobId, "Booking Completed");
+        if (job.status === "Pre-alert Pending" || job.status === "Documents Uploaded" || job.status === "Pending Documents") s = withJobStatus(s, jobId, "Booking Completed");
         commit(s);
-        toast("Documents dispatched to CHA. Booking completed");
+        toast("Pre-alert sent to the shipper. Booking completed");
       },
 
       /** "Notify Customer" from a job or reservation: an email to the customer */
@@ -1369,7 +1473,7 @@ function useStoreState() {
             ...b,
             id: uid(),
             kind: "Credit Note",
-            no: creditNoteNo(b.no),
+            no: s.bills.some((x) => x.no === creditNoteNo(b.no)) ? nextCreditNoteNo(s, b).no : creditNoteNo(b.no),
             date: today(),
             createdAt: now(),
             status: "Draft",
@@ -1384,6 +1488,34 @@ function useStoreState() {
         }
         commit(s);
         toast(cn ? `${b.no} cancelled. Credit note ${cn.no} created` : `${b.no} cancelled`);
+        return cn;
+      },
+
+      /**
+       * Credit note raised by hand for an existing job (not from a cancelled invoice). Filled from the
+       * job like a proforma, with the lines reversed; edit the lines, then Issue.
+       */
+      createCreditNote(jobId: string): Bill | undefined {
+        let s = get();
+        const job = s.jobs.find((j) => j.id === jobId);
+        if (!job) return undefined;
+        const draft = proformaDraft(s, job);
+        const { no, seq } = nextCreditNoteNo(s, job);
+        const cn: Bill = {
+          ...draft,
+          kind: "Credit Note",
+          id: uid(),
+          no,
+          createdAt: now(),
+          status: "Draft",
+          statusAt: now(),
+          payments: [],
+          // Each line reversed, as for a cancelled invoice (a discount line becomes positive)
+          lines: draft.lines.map((l) => ({ ...l, id: uid(), rate: -l.rate })),
+        };
+        s = { ...s, bills: [cn, ...s.bills], counters: { ...s.counters, creditNote: seq } };
+        commit(s);
+        toast(`Credit note ${cn.no} created for ${job.ref}`);
         return cn;
       },
 
@@ -1473,7 +1605,9 @@ export function useLookups() {
       rate: (id?: string) => state.rates.find((r) => r.id === id),
       reservation: (id?: string) => state.reservations.find((r) => r.id === id),
       /** The job's current AWB (ignoring cancelled ones) */
-      awbOf: (jobId?: string) => state.awbs.find((a) => a.jobId === jobId && a.status !== "Cancelled"),
+      /** The job's AWBs (one MAWB, possibly several House AWBs), oldest first; cancelled ones left out */
+      awbsOf: (jobId?: string) => state.awbs.filter((a) => a.jobId === jobId && a.status !== "Cancelled").sort((x, y) => x.createdAt.localeCompare(y.createdAt)),
+      awbOf: (jobId?: string) => state.awbs.filter((a) => a.jobId === jobId && a.status !== "Cancelled").sort((x, y) => x.createdAt.localeCompare(y.createdAt))[0],
     }),
     [state],
   );

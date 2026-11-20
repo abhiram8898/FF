@@ -143,6 +143,7 @@ export default function CompanySetupPage() {
               <ImageUpload label="Second logo (e.g. IATA)" hint="Right of the letterhead." value={company.accreditationLogo} onChange={(v) => c({ accreditationLogo: v })} />
               <ImageUpload label="Letterhead banner" hint="Full-width image, about 2000 × 300 px." value={company.letterhead} onChange={(v) => c({ letterhead: v })} wide />
               <ImageUpload label="Footer banner" hint="Full-width image, about 2000 × 200 px." value={company.footer} onChange={(v) => c({ footer: v })} wide />
+              <ImageUpload label="Authorised signature" hint="Printed on AWB copies when With Sign is ticked. PNG with a transparent background works best." value={company.signatureImage} onChange={(v) => c({ signatureImage: v })} />
             </div>
             {bar(
               JSON.stringify(company) !== JSON.stringify(state.settings.company),

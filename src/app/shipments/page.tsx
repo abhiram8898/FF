@@ -81,8 +81,8 @@ export default function BookingJobPage() {
       id: "docs",
       icon: FileStack,
       tone: "amber",
-      label: "Documents / CHA Pending",
-      test: (j) => ["Pending Documents", "Documents Uploaded", "CHA Dispatch Pending"].includes(j.status),
+      label: "Documents / Pre-alert Pending",
+      test: (j) => ["Pending Documents", "Documents Uploaded", "Pre-alert Pending"].includes(j.status),
     },
     {
       id: "departed",
