@@ -56,10 +56,11 @@ export function migrate(s: State): State {
   if (s.counters.hawb === undefined || s.counters.creditNote === undefined) s = { ...s, counters: { ...s.counters, hawb: s.counters.hawb ?? 0, creditNote: s.counters.creditNote ?? 0 } };
   // The single "Invoice Details" text on an AWB became Invoice Number + Invoice Date
   if (s.awbs.some((a) => a.invoiceNo === undefined)) s = { ...s, awbs: s.awbs.map((a) => (a.invoiceNo === undefined ? { ...a, invoiceNo: a.invoiceDetails, invoiceDate: "" } : a)) };
-  // "CHA Dispatch Pending" became "Pre-alert Pending" when the documents started going to the shipper
-  const OLD_PREALERT = "CHA Dispatch Pending";
-  if (s.jobs.some((j) => (j.status as string) === OLD_PREALERT)) s = { ...s, jobs: s.jobs.map((j) => ((j.status as string) === OLD_PREALERT ? { ...j, status: "Pre-alert Pending" } : j)) };
-  if (s.enquiries.some((e) => (e.status as string) === OLD_PREALERT)) s = { ...s, enquiries: s.enquiries.map((e) => ((e.status as string) === OLD_PREALERT ? { ...e, status: "Pre-alert Pending" as Enquiry["status"] } : e)) };
+  // Renamed job stages (enquiries mirror them): documents now go to the shipper as a pre-alert, and the
+  // stage after the AWB is executed names both what happened and what is next
+  const RENAMED: Record<string, JobStatus> = { "CHA Dispatch Pending": "Pre-alert Pending", "Pending Documents": "AWB Executed, Pending Documents" };
+  if (s.jobs.some((j) => j.status in RENAMED)) s = { ...s, jobs: s.jobs.map((j) => (j.status in RENAMED ? { ...j, status: RENAMED[j.status] } : j)) };
+  if (s.enquiries.some((e) => e.status in RENAMED)) s = { ...s, enquiries: s.enquiries.map((e) => (e.status in RENAMED ? { ...e, status: RENAMED[e.status] } : e)) };
   return s;
 }
 
@@ -1074,7 +1075,7 @@ function useStoreState() {
         }
         s = patchAwb(s, id, { status, statusAt: now() });
         if (job && status === "AWB Executed" && job.status === "AWB In Progress") {
-          s = withJobStatus(s, job.id, "Pending Documents");
+          s = withJobStatus(s, job.id, "AWB Executed, Pending Documents");
           if (s.settings.alerts.notifyOnAwb && job.enquiryId) {
             s = withNotification(s, job.enquiryId, `${a.type} AWB ${a.type === "House" ? a.hawbNo : a.mawbNo} issued for your shipment.`, "Email");
           }
@@ -1108,7 +1109,7 @@ function useStoreState() {
         }
         for (const a of pending) s = patchAwb(s, a.id, { status: "AWB Executed", statusAt: now() });
         if (job.status === "AWB In Progress") {
-          s = withJobStatus(s, job.id, "Pending Documents");
+          s = withJobStatus(s, job.id, "AWB Executed, Pending Documents");
           if (s.settings.alerts.notifyOnAwb && job.enquiryId) {
             s = withNotification(s, job.enquiryId, `${pending.length > 1 ? `${pending.length} AWBs` : `${pending[0].type} AWB ${awbNumber(pending[0])}`} issued for your shipment.`, "Email");
           }
@@ -1128,7 +1129,7 @@ function useStoreState() {
         if (job && a) {
           const shared = s.awbs.some((x) => x.jobId === job.id && x.status !== "Cancelled" && x.mawbNo === a.mawbNo);
           if (job.awbNo === a.mawbNo && !shared) s = patchJob(s, job.id, { awbNo: "" });
-          if (job.status === "Pending Documents" && !s.awbs.some((x) => x.jobId === job.id && x.status === "AWB Executed")) s = withJobStatus(s, job.id, "AWB In Progress");
+          if (job.status === "AWB Executed, Pending Documents" && !s.awbs.some((x) => x.jobId === job.id && x.status === "AWB Executed")) s = withJobStatus(s, job.id, "AWB In Progress");
         }
         commit(s);
         toast("AWB deleted");
@@ -1148,7 +1149,7 @@ function useStoreState() {
         let s = patchJob(get(), jobId, { uploadCompletedAt: now() });
         const job = s.jobs.find((j) => j.id === jobId)!;
         // The documents stage only starts once the AWB is executed
-        if (job.status === "Pending Documents") s = withJobStatus(s, jobId, "Documents Uploaded");
+        if (job.status === "AWB Executed, Pending Documents") s = withJobStatus(s, jobId, "Documents Uploaded");
         commit(s);
         toast(job.status === "AWB In Progress" ? "Uploading marked completed. Execute the AWB to move the job on" : "Uploading marked completed. Next: merge the documents");
       },
@@ -1160,7 +1161,7 @@ function useStoreState() {
         for (const key of merged.order.filter((k) => k.startsWith("invoice:"))) {
           s = patchInvoice(s, key.slice(8), { status: "Completed", statusAt: now() });
         }
-        if (["Pending Documents", "Documents Uploaded"].includes(job.status)) s = withJobStatus(s, jobId, "Pre-alert Pending");
+        if (["AWB Executed, Pending Documents", "Documents Uploaded"].includes(job.status)) s = withJobStatus(s, jobId, "Pre-alert Pending");
         commit(s);
         toast("Documents merged. Next: send the pre-alert to the shipper");
       },
@@ -1169,7 +1170,7 @@ function useStoreState() {
         const job = get().jobs.find((j) => j.id === jobId)!;
         let s = withLog(get(), "Pre-alert", mail, { jobId, enquiryId: job.enquiryId }, job.merged ? [job.merged.fileName] : []);
         s = patchJob(s, jobId, { dispatchedAt: now() });
-        if (job.status === "Pre-alert Pending" || job.status === "Documents Uploaded" || job.status === "Pending Documents") s = withJobStatus(s, jobId, "Booking Completed");
+        if (job.status === "Pre-alert Pending" || job.status === "Documents Uploaded" || job.status === "AWB Executed, Pending Documents") s = withJobStatus(s, jobId, "Booking Completed");
         commit(s);
         toast("Pre-alert sent to the shipper. Booking completed");
       },

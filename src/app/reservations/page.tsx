@@ -54,6 +54,8 @@ import {
   linkCls,
 } from "@/components/ui";
 import { CancelModal, RescheduleModal } from "@/components/reservation";
+import { DayShipmentsModal } from "@/components/DayShipments";
+import { reservationAsPlanned } from "@/lib/planned";
 
 type View = "Month" | "Week" | "List";
 const iso = isoDay;
@@ -105,6 +107,8 @@ export default function PlannerPage() {
   };
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [kpi, setKpi] = useState<string | null>(null);
+  // Day whose full list of reservations is open
+  const [dayList, setDayList] = useState<string | null>(null);
   const selected = state.reservations.find((r) => r.id === selectedId);
 
   const days = useMemo(
@@ -449,13 +453,18 @@ export default function PlannerPage() {
                   const isToday = d === t;
                   // The day picked in Go to date, when it isn't today
                   const picked = d === anchor && !isToday;
+                  const onDay = visible.filter((r) => r.shipmentDate === d).length;
                   return (
-                    <div
+                    // The date opens every reservation of the day (all customers) in one list
+                    <button
+                      type="button"
                       key={d}
                       data-day={d}
+                      onClick={() => setDayList(d)}
                       aria-current={picked ? "date" : undefined}
+                      aria-label={`${onDay} reservation${onDay === 1 ? "" : "s"} on ${fmtDate(d)}: show all`}
                       className={cn(
-                        "border-b border-l border-slate-100 px-1.5 py-1.5 text-center text-xs",
+                        "border-b border-l border-slate-100 px-1.5 py-1.5 text-center text-xs hover:bg-slate-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500",
                         isToday
                           ? "bg-brand-50 font-semibold text-brand-700"
                           : picked
@@ -486,7 +495,12 @@ export default function PlannerPage() {
                       <div className="text-sm text-slate-800">
                         {String(dt.getUTCDate()).padStart(2, "0")}
                       </div>
-                    </div>
+                      {onDay > 0 && (
+                        <div className="mx-auto mt-0.5 w-fit rounded-full bg-slate-100 px-1.5 text-[0.6875rem] font-semibold text-slate-600">
+                          {onDay} shipment{onDay === 1 ? "" : "s"}
+                        </div>
+                      )}
+                    </button>
                   );
                 })}
                 {customerIds.length ? (
@@ -638,6 +652,13 @@ export default function PlannerPage() {
           <PlannerPanel r={selected} onClose={() => setSelectedId(null)} />
         )}
       </div>
+      {dayList && (
+        <DayShipmentsModal
+          date={dayList}
+          items={visible.filter((r) => r.shipmentDate === dayList).map(reservationAsPlanned)}
+          onClose={() => setDayList(null)}
+        />
+      )}
     </>
   );
 }

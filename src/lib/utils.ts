@@ -260,7 +260,7 @@ export function matches(term: string, values: (string | number | undefined)[]) {
 }
 
 /** Job stages after the AWB is executed and before the pre-alert goes to the shipper */
-export const DOCUMENT_STAGE_STATUSES: readonly JobStatus[] = ["Pending Documents", "Documents Uploaded", "Pre-alert Pending"];
+export const DOCUMENT_STAGE_STATUSES: readonly JobStatus[] = ["AWB Executed, Pending Documents", "Documents Uploaded", "Pre-alert Pending"];
 
 /** Statuses reached once a Booking/Job exists */
 export const JOB_STAGE_STATUSES: readonly EnquiryStatus[] = JOB_STATUSES.filter((s) => s !== "Cancelled");
@@ -440,7 +440,7 @@ const STEP_INDEX: Record<EnquiryStatus, number> = {
   "Booking in Progress": 5,
   "Booking Confirmed": 6,
   "AWB In Progress": 7,
-  "Pending Documents": 8,
+  "AWB Executed, Pending Documents": 8,
   "Documents Uploaded": 9,
   "Pre-alert Pending": 10,
   "Booking Completed": 11,
@@ -475,7 +475,7 @@ export const STATUS_TONE: Record<EnquiryStatus | QuotationStatus, string> = {
   "Booking in Progress": TONE.action,
   "Booking Confirmed": TONE.done,
   "AWB In Progress": TONE.action,
-  "Pending Documents": TONE.action,
+  "AWB Executed, Pending Documents": TONE.action,
   "Documents Uploaded": TONE.action,
   "Pre-alert Pending": TONE.action,
   "Booking Completed": TONE.done,
@@ -538,7 +538,7 @@ export const STAGES = [
   { key: "booking", label: "Waiting for Booking Confirmation", hint: "Date confirmed, airline to confirm", statuses: ["Booking in Progress"] },
   { key: "booked", label: "Booking Confirmed", hint: "Flight booked", statuses: ["Booking Confirmed"] },
   { key: "awb", label: "AWB Pending", hint: "Job created, AWB not executed", statuses: ["AWB In Progress"] },
-  { key: "docs", label: "Document Upload Pending", hint: "Upload, merge & send the pre-alert", statuses: ["Pending Documents", "Documents Uploaded", "Pre-alert Pending"] },
+  { key: "docs", label: "Document Upload Pending", hint: "Upload, merge & send the pre-alert", statuses: ["AWB Executed, Pending Documents", "Documents Uploaded", "Pre-alert Pending"] },
 ] as const satisfies readonly { key: string; label: string; hint: string; statuses: readonly EnquiryStatus[] }[];
 
 export type StageKey = (typeof STAGES)[number]["key"];

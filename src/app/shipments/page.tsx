@@ -82,7 +82,7 @@ export default function BookingJobPage() {
       icon: FileStack,
       tone: "amber",
       label: "Documents / Pre-alert Pending",
-      test: (j) => ["Pending Documents", "Documents Uploaded", "Pre-alert Pending"].includes(j.status),
+      test: (j) => ["AWB Executed, Pending Documents", "Documents Uploaded", "Pre-alert Pending"].includes(j.status),
     },
     {
       id: "departed",

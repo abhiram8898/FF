@@ -2,14 +2,14 @@
 
 /* eslint-disable @next/next/no-img-element -- logos are user-uploaded data URLs */
 import { useEffect, useRef, useState } from "react";
-import { Eye, Plus, Printer, Send, Trash2, X } from "lucide-react";
+import { BadgeCheck, Eye, Plus, Printer, Send, Trash2, X } from "lucide-react";
 import { type AwbInput, awbMissing, nextHawbNo, useLookups, useStore } from "@/lib/store";
 import { AWB_STATUSES, CHGS_CODES, FREIGHT_TERMS, RATE_CLASSES, type Awb, type AwbLeg, type AwbOtherCharge, type AwbStatus, type HawbSource, type Job, type State } from "@/lib/types";
 import { AWB_TONE, awbLabel, awbNumber, cn, f2, fmtDate, fmtPort, omit, parseRate, round2, today, uid, volumeCbm } from "@/lib/utils";
 import { ComposeEmail } from "./ComposeEmail";
-import { AWB_COPIES, type AwbCopy, type AwbPrintOptions } from "./awbCopies";
+import { AWB_COPIES, type AwbPrintOptions } from "./awbCopies";
 import { AwbPrintDialog, DEFAULT_PRINT, type PrintChoice, RATE_MODES, type RateMode, type Stationery } from "./awbPrint";
-import { Badge, Button, DISCARD_CHANGES, Field, Input, Modal, SectionTitle, Select, Textarea } from "./ui";
+import { Badge, Button, CheckMenu, DISCARD_CHANGES, Field, Input, Modal, SectionTitle, Select, Textarea } from "./ui";
 
 export { awbLabel };
 /** Weight charge: rate × chargeable weight, or the flat minimum charge for rate class M */
@@ -224,7 +224,8 @@ export function AwbFormModal({ job, existing, onClose, onSaved }: { job: Job; ex
   const incomplete = tabs.filter((t) => gaps(t).length);
   // Preview numbers for "Own" HAWBs not saved yet, in tab order
   const pendingOwn = tabs.filter((t) => t.hawbSource === "Own" && !t.hawbNo && !state.awbs.some((x) => x.id === t.id && x.hawbSource === "Own" && x.hawbNo));
-  const ownPreview = (t: AwbTab) => nextHawbNo(state, job.branch, pendingOwn.indexOf(t) + 1);
+  // A saved Own number cleared in the form is kept on save, so it is what the field falls back to
+  const ownPreview = (t: AwbTab) => state.awbs.find((x) => x.id === t.id && x.hawbSource === "Own" && x.hawbNo)?.hawbNo ?? nextHawbNo(state, job.branch, pendingOwn.indexOf(t) + 1);
   const t = awbTotals(a);
   const setCharge = (id: string, patch: Partial<AwbOtherCharge>) => set("otherCharges", a.otherCharges.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   const grid = "grid grid-cols-1 max-xs:*:col-span-full xs:grid-cols-2 gap-3 sm:grid-cols-4";
@@ -250,6 +251,8 @@ export function AwbFormModal({ job, existing, onClose, onSaved }: { job: Job; ex
     setTabs((list) => [...list, next]);
     setActive(tabs.length);
     setAddMenu(false);
+    // Straight to the new tab's number
+    setTimeout(() => document.getElementById("awb-hawb-no")?.focus(), 0);
   };
   const removeTab = (i: number) => {
     setTabs((list) => list.filter((_, j) => j !== i));
@@ -366,12 +369,9 @@ export function AwbFormModal({ job, existing, onClose, onSaved }: { job: Job; ex
                   <Plus size={13} aria-hidden /> Add
                 </button>
               </div>
-              {autoNo(a) ? (
-                <Input id="awb-hawb-no" value={a.hawbNo || ownPreview(a)} readOnly className={cn("font-mono", !a.hawbNo && "text-slate-500 italic")} title={a.hawbNo ? undefined : "Given when the AWB is saved"} />
-              ) : (
-                <Input id="awb-hawb-no" value={a.hawbNo} onChange={str("hawbNo", true)} placeholder="Add manually" className="font-mono" />
-              )}
-              <span className="text-xs text-slate-500">{autoNo(a) ? (a.hawbNo ? "Company sequence" : "Next number, given on save") : "Entered by hand"}</span>
+              {/* Always editable: with Own, an empty field takes the next company number on save */}
+              <Input id="awb-hawb-no" value={a.hawbNo} onChange={str("hawbNo", true)} placeholder={autoNo(a) ? ownPreview(a) : "Add manually"} className="font-mono" />
+              <span className="text-xs text-slate-500">{autoNo(a) ? (a.hawbNo ? "You can change this number" : "Leave empty for the next number, or type your own") : "Entered by hand"}</span>
               {addMenu && (
                 <div id="awb-add-menu" role="menu" aria-label="Add House AWB" className="menu-in absolute top-12 right-0 z-30 w-64 overflow-hidden rounded-xl bg-white p-1 shadow-xl ring-1 ring-slate-200">
                   <button type="button" role="menuitem" onClick={() => addTab(false)} className="block w-full rounded-lg px-3 py-2 text-left hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-2 focus-visible:outline-brand-500">
@@ -1100,7 +1100,9 @@ export function AwbPicker({ awbs, onPick, onClose, title = "Select an AWB to pre
  * (copy type, With Sign, stationery and rates) show live here and carry into the print dialog.
  */
 export function AwbPreviewModal({ awb, siblings, onClose, onBack, onEdit, unsaved }: { awb: Awb; siblings?: Awb[]; onClose: () => void; onBack?: () => void; onEdit?: () => void; unsaved?: boolean }) {
-  const { state } = useStore();
+  const { state, actions } = useStore();
+  // Live status: sending from this preview moves a draft to "Draft AWB Send" while it stays open
+  const status = state.awbs.find((x) => x.id === awb.id)?.status ?? awb.status;
   const [sending, setSending] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [choice, setChoice] = useState<PrintChoice>(DEFAULT_PRINT);
@@ -1118,14 +1120,10 @@ export function AwbPreviewModal({ awb, siblings, onClose, onBack, onEdit, unsave
       title={`Preview · ${awbLabel(awb)}`}
       footer={
         <div className="flex w-full flex-wrap items-center justify-between gap-2">
-          <Badge className={AWB_TONE[awb.status]}>{awb.status}</Badge>
+          <Badge className={AWB_TONE[status]}>{status}</Badge>
           {/* Quick print options: the preview follows them, and Print starts from them */}
           <div className="no-print flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            <select aria-label="Copy type" className={quick} value={choice.copies[0] ?? ""} onChange={(e) => setChoice({ ...choice, copies: [e.target.value as AwbCopy] })}>
-              {AWB_COPIES.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
+            <CheckMenu label="AWB copy type" options={AWB_COPIES} value={choice.copies} onChange={(copies) => setChoice({ ...choice, copies })} required />
             <select
               aria-label="Stationery and rates"
               className={quick}
@@ -1165,9 +1163,15 @@ export function AwbPreviewModal({ awb, siblings, onClose, onBack, onEdit, unsave
             <Button variant="secondary" onClick={() => setPrinting(true)} disabled={unsaved} title={unsaved ? "Save the AWB first" : undefined}>
               <Printer size={14} aria-hidden /> Print
             </Button>
-            <Button onClick={() => setSending(true)} disabled={unsaved || awb.status === "Cancelled"} title={unsaved ? "Save the AWB first" : undefined}>
-              <Send size={14} aria-hidden /> Send
+            <Button variant={status === "Draft AWB Send" ? "secondary" : "primary"} onClick={() => setSending(true)} disabled={unsaved || status === "Cancelled"} title={unsaved ? "Save the AWB first" : undefined}>
+              <Send size={14} aria-hidden /> {status === "Draft AWB Send" ? "Send again" : "Send"}
             </Button>
+            {/* Sent to the customer for confirmation: once they confirm, the AWB is executed from here */}
+            {status === "Draft AWB Send" && !unsaved && (
+              <Button onClick={() => actions.setAwbStatus(awb.id, "AWB Executed") && onClose()}>
+                <BadgeCheck size={14} aria-hidden /> Execute Final AWB
+              </Button>
+            )}
           </div>
         </div>
       }
@@ -1176,7 +1180,12 @@ export function AwbPreviewModal({ awb, siblings, onClose, onBack, onEdit, unsave
         <input type="checkbox" className="accent-brand-600" checked={choice.reverse} onChange={(e) => setChoice({ ...choice, reverse: e.target.checked })} />
         Include the reverse side (notice of liability and conditions of contract) when printing
       </label>
-      <AwbDocument awb={awb} copy={choice.copies[0]} withSign={choice.withSign && hasSignature} dataOnly={choice.stationery === "with"} rateMode={choice.rateMode} />
+      {/* One sheet per copy type picked in the footer */}
+      <div className="space-y-6">
+        {choice.copies.map((copy) => (
+          <AwbDocument key={copy} awb={awb} copy={copy} withSign={choice.withSign && hasSignature} dataOnly={choice.stationery === "with"} rateMode={choice.rateMode} />
+        ))}
+      </div>
       {choice.reverse && <AwbReverse />}
     </Modal>
   );

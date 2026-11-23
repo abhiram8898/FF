@@ -6,12 +6,12 @@ import { useState } from "react";
 import { ArrowDown, ArrowUp, BellRing, Download, FileCheck2, Merge, Send } from "lucide-react";
 import { useLookups, useStore } from "@/lib/store";
 import { JOB_FINAL_STATUSES, type Awb, type CustomerInvoice, type Job, type MailDraft, type MergedDocs, type StoredDoc } from "@/lib/types";
-import { MAX_KEPT_FILE, fmtDate, fmtDateTime, fmtSize, readFileAsDataUrl } from "@/lib/utils";
+import { AWB_TONE, MAX_KEPT_FILE, fmtDate, fmtDateTime, fmtSize, readFileAsDataUrl } from "@/lib/utils";
 import { ComposeEmail } from "./ComposeEmail";
 import { AwbFormModal, AwbPicker, AwbPreviewModal, AwbStatusModal, awbLabel } from "./awb";
 import { invoiceTotals } from "./invoice";
 import { DocumentsInput } from "./inputs";
-import { Button, Fog, LinkButton, Modal } from "./ui";
+import { Badge, Button, Fog, LinkButton, Modal } from "./ui";
 
 /** Line status shown on the Documents screen */
 export function docsLineStatus(job: Job) {
@@ -488,12 +488,16 @@ export function JobNextAction({ job, initial }: { job: Job; initial?: JobDialog 
         ? row(
             awbs.length > 1 ? (
               <>
-                <b>{awbs.length} House AWBs</b> under MAWB <b className="font-mono">{awb.mawbNo || "—"}</b> ({counts}). Preview and send each for confirmation, then mark them executed.
+                <b>{awbs.length} House AWBs</b> under MAWB <b className="font-mono">{awb.mawbNo || "—"}</b> ({counts}). Preview and send each for confirmation; once confirmed, use <b>Execute Final AWB</b>.
               </>
             ) : (
               <>
                 AWB <b className="font-mono">{awbLabel(awb)}</b> is <b>{awb.status}</b>.{" "}
-                {awb.status === "Draft" ? "Preview and send it to the customer for confirmation." : "Once the customer confirms (and any corrections are made), mark it executed."}
+                {awb.status === "Draft" ? "Preview and send it to the customer for confirmation." : (
+                  <>
+                    Once the customer confirms (and any corrections are made), use <b>Execute Final AWB</b>.
+                  </>
+                )}
               </>
             ),
             <>
@@ -504,7 +508,7 @@ export function JobNextAction({ job, initial }: { job: Job; initial?: JobDialog 
                 Preview / Send
               </Button>
               <Button size="sm" onClick={executeAll}>
-                AWB Executed
+                Execute Final AWB
               </Button>
             </>,
           )
@@ -515,10 +519,19 @@ export function JobNextAction({ job, initial }: { job: Job; initial?: JobDialog 
             <Button onClick={() => setDialog("awb")}>Execute AWB</Button>,
           );
       break;
-    case "Pending Documents":
+    case "AWB Executed, Pending Documents":
       body = row(
         <>
-          AWB executed. Next action: <b>Manage Documents</b>. Upload the documents, then mark uploading completed.
+          AWB executed. Next action: <b>Upload Documents</b>, then mark uploading completed.
+          {/* Each AWB with its status, so "AWB Executed" shows right after Execute Final AWB */}
+          <span className="mt-1.5 flex flex-wrap gap-1.5">
+            {awbs.map((a) => (
+              <span key={a.id} className="inline-flex items-center gap-1.5 text-xs">
+                <span className="font-mono">{awbLabel(a)}</span>
+                <Badge className={AWB_TONE[a.status]}>{a.status}</Badge>
+              </span>
+            ))}
+          </span>
           {notExecuted.length > 0 && (
             <span className="mt-1 block text-amber-700">
               Not executed yet: {notExecuted.map((a) => `${awbLabel(a)} (${a.status})`).join(", ")}. They are left out of the merged documents until executed.
@@ -537,7 +550,7 @@ export function JobNextAction({ job, initial }: { job: Job; initial?: JobDialog 
             </>
           )}
           {openProforma}
-          <Button onClick={() => setDialog("upload")}>Manage Documents</Button>
+          <Button onClick={() => setDialog("upload")}>Upload Documents</Button>
         </>,
       );
       break;
@@ -621,7 +634,7 @@ export function JobNextAction({ job, initial }: { job: Job; initial?: JobDialog 
         <>
           {row(<>This job is <b>on hold</b>. Pick the status to continue.</>, notifyBtn)}
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" variant="secondary" onClick={() => actions.setJobStatus(job.id, job.dispatchedAt ? "Booking Completed" : job.merged ? "Pre-alert Pending" : awb?.status === "AWB Executed" ? "Pending Documents" : "AWB In Progress")}>
+            <Button size="sm" variant="secondary" onClick={() => actions.setJobStatus(job.id, job.dispatchedAt ? "Booking Completed" : job.merged ? "Pre-alert Pending" : awb?.status === "AWB Executed" ? "AWB Executed, Pending Documents" : "AWB In Progress")}>
               Resume
             </Button>
             {finalButtons}

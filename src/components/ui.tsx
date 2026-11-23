@@ -6,8 +6,10 @@ import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeft,
   ArrowRightLeft,
+  BadgeCheck,
   Ban,
   BellRing,
+  ChevronDown,
   CalendarPlus,
   CalendarRange,
   ClipboardList,
@@ -153,8 +155,13 @@ export function Field({
 const inputCls =
   "h-9 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-2.5 text-sm sm:h-8 text-slate-900 shadow-xs outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-500";
 
-export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn(inputCls, className)} {...props} />;
+/**
+ * A number field holding 0 shows empty with a grey "0" hint, so typing an amount never leaves a leading
+ * zero behind ("0111"). Clearing the field still stores 0.
+ */
+export function Input({ className, value, placeholder, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+  const zero = props.type === "number" && (value === 0 || value === "0");
+  return <input className={cn(inputCls, className)} value={zero ? "" : value} placeholder={zero ? (placeholder ?? "0") : placeholder} {...props} />;
 }
 
 /** "Go to date" on the calendar pages: jumps the month / week shown to the picked day */
@@ -164,6 +171,90 @@ export function DateJump({ value, onChange }: { value: string; onChange: (isoDat
       Go to date
       <Input type="date" name="go-to-date" value={value} onChange={(e) => e.target.value && onChange(e.target.value)} className="w-36" />
     </label>
+  );
+}
+
+/**
+ * Dropdown with a checkbox per option, for picking several at once (e.g. AWB copy types). At least one
+ * stays picked when `required` is set. Closes on Escape or a click outside.
+ */
+export function CheckMenu<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+  required,
+  className,
+}: {
+  label: string;
+  options: readonly T[];
+  value: T[];
+  onChange: (v: T[]) => void;
+  required?: boolean;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [open]);
+  // Kept in the options' order
+  const set = (list: T[]) => onChange(options.filter((o) => list.includes(o)));
+  const toggle = (o: T) => {
+    const next = value.includes(o) ? value.filter((x) => x !== o) : [...value, o];
+    if (!required || next.length) set(next);
+  };
+  const summary = value.length === 0 ? "None" : value.length === 1 ? value[0] : value.length === options.length ? `All ${options.length}` : `${value[0]} +${value.length - 1}`;
+  return (
+    <div
+      ref={ref}
+      className={cn("relative", className)}
+      onKeyDown={(e) => {
+        // Escape closes the list only, not the dialog around it
+        if (e.key === "Escape" && open) {
+          e.stopPropagation();
+          setOpen(false);
+        }
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-label={`${label}: ${value.join(", ") || "none"}`}
+        className="flex h-8 max-w-64 min-w-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-800 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-brand-500"
+      >
+        <span className="truncate">{summary}</span>
+        <ChevronDown size={14} className="shrink-0 text-slate-500" aria-hidden />
+      </button>
+      {open && (
+        <div role="group" aria-label={label} className="menu-in absolute bottom-full left-0 z-50 mb-1 w-72 rounded-xl bg-white p-1.5 shadow-xl ring-1 ring-slate-200">
+          <div className="flex items-center justify-between px-2 pt-0.5 pb-1.5 text-xs">
+            <span className="font-semibold text-slate-600">{label}</span>
+            <span className="flex gap-3">
+              <button type="button" className="font-medium text-brand-700 hover:underline" onClick={() => set([...options])}>
+                Select all
+              </button>
+              {!required && (
+                <button type="button" className="font-medium text-brand-700 hover:underline" onClick={() => set([])}>
+                  Clear
+                </button>
+              )}
+            </span>
+          </div>
+          {options.map((o) => (
+            <label key={o} className={cn("flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm", value.includes(o) ? "bg-brand-50 font-medium text-brand-800" : "text-slate-700 hover:bg-slate-50")}>
+              <input type="checkbox" className="accent-brand-600" checked={value.includes(o)} onChange={() => toggle(o)} />
+              {o}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -709,6 +800,7 @@ type ActionTone = keyof typeof ACTION_TONES;
 /** Icon and colour for each row action, matched on the label (first match wins, so specific labels come first) */
 const ACTION_STYLES: [RegExp, LucideIcon, ActionTone][] = [
   [/^edit/i, Pencil, "edit"],
+  [/^execute/i, BadgeCheck, "convert"],
   [/convert to reservation/i, CalendarPlus, "convert"],
   [/convert to job/i, PackagePlus, "convert"],
   [/enquiry/i, ClipboardList, "link"],

@@ -43,7 +43,7 @@ export default function AwbsPage() {
 
   return (
     <>
-      <PageHeader title="Airway Bills" subtitle="Master and House AWBs. Save keeps a draft; send it to the customer, then mark it executed once confirmed." />
+      <PageHeader title="Airway Bills" subtitle="Master and House AWBs. Save keeps a draft; send it to the customer, then use Execute Final AWB once confirmed." />
 
       <KpiFilters cols={5} rows={state.awbs} kpis={KPIS} active={kpi} onChange={setKpi} />
 
@@ -125,6 +125,8 @@ export default function AwbsPage() {
                         items={[
                           { label: "View", onSelect: () => setView(a) },
                           ...(j ? [{ label: "Edit", onSelect: () => setEditing(a) }] : []),
+                          // Sent to the customer for confirmation: finalise it in one click
+                          ...(a.status === "Draft AWB Send" ? [{ label: "Execute Final AWB", onSelect: () => actions.setAwbStatus(a.id, "AWB Executed") }] : []),
                           { label: "Status Change", onSelect: () => setStatusFor(a) },
                           // An executed AWB is kept; it can only be cancelled
                           ...(a.status === "AWB Executed" ? [] : [{ label: "Delete", onSelect: () => window.confirm(`Delete ${awbLabel(a)}? Cancel keeps the record instead.`) && actions.deleteAwb(a.id) }]),

@@ -6,6 +6,7 @@ import { CalendarDays, CalendarRange, ChevronLeft, ChevronRight, ClipboardList, 
 import { useLookups, useStore } from "@/lib/store";
 import { type Planned, type PlannedSource, SOURCE_PREFIX, monthWeeks, plannedShipments, rowWeekNo } from "@/lib/planned";
 import { cn, fmtDate, isoDay, matches, today, utcDay } from "@/lib/utils";
+import { DayShipmentsModal } from "@/components/DayShipments";
 import { Badge, Button, Card, DateJump, FilterBar, FilterSelect, Kpi, KpiGrid, NoResults, PageHeader, SearchField, Table, linkCls } from "@/components/ui";
 
 type Source = PlannedSource;
@@ -30,7 +31,8 @@ export default function PlannedShipmentsPage() {
   const [airlineId, setAirlineId] = useState("all");
   const [showCancelled, setShowCancelled] = useState(false);
   const [open, setOpen] = useState<{ item: Planned; rect: DOMRect } | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // Day whose full list of shipments is open
+  const [dayList, setDayList] = useState<string | null>(null);
   const t = today();
 
   const all = useMemo(() => plannedShipments(state), [state]);
@@ -112,31 +114,22 @@ export default function PlannedShipmentsPage() {
     const isToday = d === t;
     // The day picked in Go to date, when it isn't today
     const picked = d === anchor && !isToday;
-    const limit = tall || expanded === d ? items.length : 3;
     return (
       <div key={d} data-day={d} aria-current={picked ? "date" : undefined} className={cn("min-h-28 min-w-0 border-b border-l border-slate-200 p-1", !inMonth && "bg-slate-50/70", tall && "min-h-[26rem]", picked && "bg-amber-50/60 ring-2 ring-amber-400 ring-inset")}>
-        <div className="mb-1 flex items-center justify-between px-0.5">
-          {items.length > 0 && <span className="text-[0.6875rem] text-slate-500">{items.length}</span>}
+        {/* The date opens every shipment of the day in one list */}
+        <button
+          type="button"
+          onClick={() => setDayList(d)}
+          aria-label={`${items.length} shipment${items.length === 1 ? "" : "s"} on ${fmtDate(d)}: show all`}
+          className="mb-1 flex w-full items-center justify-between rounded px-0.5 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-brand-500"
+        >
+          {items.length > 0 && <span className="rounded-full bg-slate-100 px-1.5 text-[0.6875rem] font-semibold text-slate-600">{items.length}</span>}
           <span className={cn("ml-auto text-xs", isToday ? "grid size-6 place-items-center rounded-full bg-navy-900 font-semibold text-white dark:bg-[#2a62e6]" : inMonth ? "font-medium text-slate-700" : "text-slate-500")}>
             {Number(d.slice(8))}
           </span>
-        </div>
-        <div className="space-y-1">
-          {items.slice(0, limit).map((p) => chip(p, !tall))}
-          {items.length > limit ? (
-            <button type="button" onClick={() => setExpanded(d)} className="w-full rounded px-1 text-left text-[0.6875rem] font-semibold text-brand-700 hover:bg-brand-50">
-              +{items.length - limit} more
-            </button>
-          ) : (
-            !tall &&
-            expanded === d &&
-            items.length > 3 && (
-              <button type="button" onClick={() => setExpanded(null)} className="w-full rounded px-1 text-left text-[0.6875rem] font-semibold text-brand-700 hover:bg-brand-50">
-                Show less
-              </button>
-            )
-          )}
-        </div>
+        </button>
+        {/* Every booking of the day, however many (several per customer, several customers) */}
+        <div className="space-y-1">{items.map((p) => chip(p, !tall))}</div>
       </div>
     );
   };
@@ -310,11 +303,12 @@ export default function PlannedShipmentsPage() {
             <span className="flex items-center gap-1">
               <Ship size={12} aria-hidden /> Sea
             </span>
-            <span className="ml-auto">Click a shipment for details</span>
+            <span className="ml-auto">Click a shipment for details, or a date for all its shipments</span>
           </div>
         </Card>
       )}
 
+      {dayList && <DayShipmentsModal date={dayList} items={byDay(dayList)} onClose={() => setDayList(null)} />}
       {open && <ShipmentPopover item={open.item} rect={open.rect} onClose={() => setOpen(null)} airline={airlineName(open.item.airlineId)?.name} customerName={customer(open.item.customerId)?.name} portLabel={portLabel} />}
     </>
   );

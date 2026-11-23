@@ -1,4 +1,4 @@
-import { ENQUIRY_STATUSES, type EnquiryStatus, type State } from "./types";
+import { ENQUIRY_STATUSES, type EnquiryStatus, type Reservation, type State } from "./types";
 import { RESERVATION_TONE, STATUS_TONE, isoDay, utcDay } from "./utils";
 
 export type PlannedSource = "Job" | "Reservation" | "Enquiry";
@@ -23,6 +23,30 @@ export interface Planned {
   commodity: string;
   href: string;
   cancelled: boolean;
+}
+
+/** A reservation as a calendar entry (also used by the Shipment Planner's day list) */
+export function reservationAsPlanned(r: Reservation): Planned {
+  return {
+    key: `res:${r.id}`,
+    source: "Reservation",
+    ref: r.ref,
+    date: r.shipmentDate,
+    status: r.status,
+    tone: RESERVATION_TONE[r.status] ?? "",
+    customerId: r.customerId,
+    shipper: r.shipperName,
+    pol: r.pol,
+    pod: r.pod,
+    airlineId: r.airlineId,
+    flightNo: r.booking?.flightNo || r.flightNo,
+    mode: r.cargoMode === "Sea" ? "Sea" : "Air",
+    pieces: r.packages,
+    weight: r.chargeableWeight || r.grossWeight,
+    commodity: r.commodity,
+    href: `/reservations/${r.id}`,
+    cancelled: r.status === "Cancelled",
+  };
 }
 
 /** Enquiries the customer has confirmed (from "Waiting for Shipment Date" on), short of cancelled or lost */
@@ -59,26 +83,7 @@ export function plannedShipments(s: State): Planned[] {
   }
   for (const r of s.reservations) {
     if (r.jobId && s.jobs.some((j) => j.id === r.jobId)) continue;
-    out.push({
-      key: `res:${r.id}`,
-      source: "Reservation",
-      ref: r.ref,
-      date: r.shipmentDate,
-      status: r.status,
-      tone: RESERVATION_TONE[r.status] ?? "",
-      customerId: r.customerId,
-      shipper: r.shipperName,
-      pol: r.pol,
-      pod: r.pod,
-      airlineId: r.airlineId,
-      flightNo: r.booking?.flightNo || r.flightNo,
-      mode: r.cargoMode === "Sea" ? "Sea" : "Air",
-      pieces: r.packages,
-      weight: r.chargeableWeight || r.grossWeight,
-      commodity: r.commodity,
-      href: `/reservations/${r.id}`,
-      cancelled: r.status === "Cancelled",
-    });
+    out.push(reservationAsPlanned(r));
   }
   for (const e of s.enquiries) {
     if (!e.shipmentDate || (e.jobId && s.jobs.some((j) => j.id === e.jobId)) || !CONFIRMED_ENQUIRY_STATUSES.includes(e.status)) continue;

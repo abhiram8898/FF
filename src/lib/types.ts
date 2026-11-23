@@ -27,7 +27,7 @@ export interface ConnectionLeg {
  */
 export const JOB_STATUSES = [
   "AWB In Progress",
-  "Pending Documents",
+  "AWB Executed, Pending Documents",
   "Documents Uploaded",
   "Pre-alert Pending",
   "Booking Completed",

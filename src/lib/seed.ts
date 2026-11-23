@@ -272,7 +272,7 @@ export function createSeed(): State {
 
   const enquiries: Enquiry[] = [
     enquiry(1, 9, {
-      status: "Pending Documents",
+      status: "AWB Executed, Pending Documents",
       customerId: "cu-abc",
       salesPerson: "Arjun Nair",
       incoterm: "FOB",
@@ -525,7 +525,7 @@ export function createSeed(): State {
       enquiryId: e1.id,
       quotationId: "qt-1",
       createdAt: ago(2),
-      status: "Pending Documents",
+      status: "AWB Executed, Pending Documents",
       customerId: e1.customerId,
       shipperId: "cu-abc",
       shipperName: "ABC Exporters Pvt. Ltd.",
